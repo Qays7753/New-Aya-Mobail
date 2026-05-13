@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Tajawal", system-ui, sans-serif;
+  --font-numeric: "Inter", system-ui, sans-serif;
+
+  /* Colors */
+  --color-background:     #F9F8F5;
+  --color-surface:        #FFFFFF;
+  --color-muted:          #F3F1EC;
+
+  --color-border:         #E8E6E1;
+
+  --color-text-primary:   #181715;
+  --color-text-secondary: #6D6A62;
+
+  --color-accent:         #CF694A;
+  --color-accent-hover:   #BB5B3E;
+  --color-accent-active:  #A84E35;
+  --color-accent-light:   #FCF4F1;
+
+  --color-success:        #13773A;
+  --color-success-bg:     #EDF9F1;
+  --color-danger:         #BA1C1C;
+  --color-danger-bg:      #FEF1F1;
+  --color-warning:        #B85F0E;
+  --color-warning-bg:     #FEFAEB;
+
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 10px 24px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 18px 38px rgba(15, 23, 42, 0.10);
+}
+
+@layer base {
+  :root {
+    font-size: 14px;
+    line-height: 1.6;
+    --color-accent-ring:    rgba(207, 105, 74, 0.18);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+  }
+
+  .numeric {
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+}
+
