@@ -1,0 +1,82 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { isDailyLockRequired, ensureDefaults } from '@/lib/auth';
+import { useCartStore } from '@/stores/cart.store';
+
+interface AuthContextType {
+  isDayUnlocked: boolean;
+  isAdminPinValidUntil: number | null;
+  checkLockStatus: () => Promise<void>;
+  markDayUnlocked: () => void;
+  grantAdminAccess: () => void;
+  requireAdminAction: (callback: () => void) => void;
+  pendingAdminAction: (() => void) | null;
+  clearPendingAdminAction: () => void;
+}
+
+const AuthContext = createContext<AuthContextType | null>(null);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [isDayUnlocked, setIsDayUnlocked] = useState(false);
+  const [isAdminPinValidUntil, setIsAdminPinValidUntil] = useState<number | null>(null);
+  const [pendingAdminAction, setPendingAdminAction] = useState<(() => void) | null>(null);
+  
+  const cartItems = useCartStore(state => state.items); 
+
+  const checkLockStatus = async () => {
+    // If cart has items, we postpone the lock until the sale is done.
+    if (cartItems && cartItems.length > 0) {
+      return; 
+    }
+    const required = await isDailyLockRequired();
+    setIsDayUnlocked(!required);
+  };
+
+  useEffect(() => {
+    ensureDefaults().then(() => checkLockStatus());
+
+    const interval = setInterval(() => {
+      checkLockStatus();
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [cartItems?.length]);
+
+  const markDayUnlocked = () => setIsDayUnlocked(true);
+  
+  const grantAdminAccess = () => {
+    setIsAdminPinValidUntil(Date.now() + 15 * 60 * 1000);
+  };
+
+  const requireAdminAction = (callback: () => void) => {
+    if (isAdminPinValidUntil && Date.now() < isAdminPinValidUntil) {
+      callback();
+    } else {
+      setPendingAdminAction(() => callback);
+    }
+  };
+
+  const clearPendingAdminAction = () => {
+    setPendingAdminAction(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{
+      isDayUnlocked,
+      isAdminPinValidUntil,
+      checkLockStatus,
+      markDayUnlocked,
+      grantAdminAccess,
+      requireAdminAction,
+      pendingAdminAction,
+      clearPendingAdminAction
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  return context;
+}

@@ -14,10 +14,12 @@ import POSPage from './modules/pos/POSPage';
 import ProductsPage from './modules/products/ProductsPage';
 import InventoryPage from './modules/inventory/InventoryPage';
 import ExpensesPage from './modules/expenses/ExpensesPage';
+import SalesPage from './modules/sales/SalesPage';
 import OperationsPage from './modules/operations/OperationsPage';
 import MaintenancePage from './modules/maintenance/MaintenancePage';
 import ReportsPage from './modules/reports/ReportsPage';
 import MorePage from './modules/more/MorePage';
+import SettingsPage from './modules/settings/SettingsPage';
 
 // Create a client ensuring networkMode: 'always' for offline support
 const queryClient = new QueryClient({
@@ -32,23 +34,31 @@ const queryClient = new QueryClient({
   },
 });
 
+import { AuthProvider } from './contexts/AuthContext';
+import { AuthGuard } from './components/auth/AuthGuard';
+
 export default function App() {
   const [dbState, setDbState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     async function setup() {
+      if (navigator.storage && navigator.storage.persist) {
+        try {
+          const isPersisted = await navigator.storage.persisted();
+          if (!isPersisted) {
+            await navigator.storage.persist();
+          }
+        } catch (e) {
+          console.warn('Storage persistence check failed', e);
+        }
+      }
+
       try {
         await initDatabase();
         await runMigrations();
         
-        // Initialize PIN if not set
-        const hasPin = await isPinSet();
-        if (!hasPin) {
-          // Default PIN is 1234
-          await checkPin('1234'); // Check actually creates it if missing
-        }
-
+        // Removed old checkPin call here since AuthProvider handles it
         setDbState('ready');
       } catch (err: any) {
         setDbState('error');
@@ -88,31 +98,37 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<Shell />}>
-            {/* Public/Employee Routes */}
-            <Route path="/pos" element={<POSPage />} />
-            <Route path="/products" element={<ProductsPage />} />
-            <Route path="/maintenance" element={<MaintenancePage />} />
-            <Route path="/more" element={<MorePage />} />
-            
-            {/* Protected/Admin Routes */}
-            <Route element={<ProtectedRoute />}>
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/inventory" element={<InventoryPage />} />
-              <Route path="/expenses" element={<ExpensesPage />} />
-              <Route path="/operations" element={<OperationsPage />} />
-              <Route path="/reports" element={<ReportsPage />} />
-            </Route>
+      <AuthProvider>
+        <AuthGuard>
+          <BrowserRouter>
+            <Routes>
+              <Route element={<Shell />}>
+                {/* Public/Employee Routes */}
+                <Route path="/pos" element={<POSPage />} />
+                <Route path="/products" element={<ProductsPage />} />
+                <Route path="/maintenance" element={<MaintenancePage />} />
+                <Route path="/more" element={<MorePage />} />
+                
+                {/* Protected/Admin Routes */}
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/inventory" element={<InventoryPage />} />
+                  <Route path="/sales" element={<SalesPage />} />
+                  <Route path="/expenses" element={<ExpensesPage />} />
+                  <Route path="/operations" element={<OperationsPage />} />
+                  <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Route>
 
-            {/* Default redirect to POS */}
-            <Route path="/" element={<Navigate to="/pos" replace />} />
-            <Route path="*" element={<Navigate to="/pos" replace />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-      <Toaster position="top-center" dir="rtl" />
+                {/* Default redirect to POS */}
+                <Route path="/" element={<Navigate to="/pos" replace />} />
+                <Route path="*" element={<Navigate to="/pos" replace />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+          <Toaster position="top-center" dir="rtl" />
+        </AuthGuard>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

@@ -4,6 +4,7 @@ import { Product, addProduct, updateProduct, toggleProductActive } from '@/db/qu
 import { X, Save, Trash2, Power } from 'lucide-react';
 import { formatMoney, parseMoney } from '@/lib/money';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ProductEditorProps {
   product: Product | null;
@@ -23,6 +24,7 @@ const CATEGORIES = [
 export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) {
   const queryClient = useQueryClient();
   const isEditing = !!product;
+  const { requireAdminAction } = useAuth();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -167,9 +169,9 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
                 value={formData.sale_price}
                 onChange={(e) => setFormData({...formData, sale_price: e.target.value})}
                 required
-                className="w-full px-4 py-2.5 rounded-lg border border-border bg-background focus:border-accent focus:ring-1 focus:ring-accent outline-none font-bold numeric text-lg pl-12"
+                className="w-full px-4 py-2.5 rounded-lg border border-border bg-background focus:border-accent focus:ring-1 focus:ring-accent outline-none font-bold numeric text-lg ps-12"
               />
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary text-sm">د.ع</span>
+              <span className="absolute start-4 top-1/2 -translate-y-1/2 text-text-secondary text-sm">د.ع</span>
             </div>
           </div>
 
@@ -186,7 +188,7 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
                   checked={formData.track_stock}
                   onChange={(e) => setFormData({...formData, track_stock: e.target.checked})}
                 />
-                <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+                <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:end-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
               </label>
             </div>
 
@@ -226,7 +228,7 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
                 checked={formData.is_quick_add}
                 onChange={(e) => setFormData({...formData, is_quick_add: e.target.checked})}
               />
-              <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+              <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:end-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
             </label>
           </div>
           
@@ -243,7 +245,13 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
 
         <div className="p-4 border-t border-border bg-background flex gap-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           <button
-            onClick={() => saveMutation.mutate()}
+            onClick={() => {
+              if (isEditing) {
+                requireAdminAction(() => saveMutation.mutate());
+              } else {
+                saveMutation.mutate();
+              }
+            }}
             disabled={saveMutation.isPending || !formData.name || !formData.sale_price}
             className="flex-1 h-[var(--btn-height)] bg-accent text-white font-bold rounded-lg disabled:opacity-50 hover:bg-accent-hover transition-colors flex items-center justify-center gap-2"
           >
@@ -255,7 +263,7 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
              <button
               onClick={() => {
                 if (window.confirm(`هل أنت متأكد من ${product.is_active ? 'إيقاف' : 'تفعيل'} هذا الصنف؟`)) {
-                  toggleMutation.mutate();
+                  requireAdminAction(() => toggleMutation.mutate());
                 }
               }}
               className="px-4 h-[var(--btn-height)] bg-surface border border-border text-text-primary rounded-lg hover:bg-muted transition-colors flex justify-center items-center"

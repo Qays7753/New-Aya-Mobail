@@ -1,12 +1,14 @@
 import { NavLink } from 'react-router-dom';
-import { Package, DollarSign, ArrowRightLeft } from 'lucide-react';
+import { Package, DollarSign, ArrowRightLeft, FileText, Settings } from 'lucide-react';
 
 export default function MorePage() {
   const menus = [
+    { path: '/sales', icon: FileText, label: 'فواتير المبيعات' },
     { path: '/products', icon: Package, label: 'المنتجات' },
     { path: '/inventory', icon: Package, label: 'المخزون' },
     { path: '/expenses', icon: DollarSign, label: 'المصروفات' },
     { path: '/operations', icon: ArrowRightLeft, label: 'العمليات' },
+    { path: '/settings', icon: Settings, label: 'الإعدادات' },
   ];
 
   return (

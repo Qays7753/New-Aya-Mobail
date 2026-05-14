@@ -1,250 +1,393 @@
-import { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getAllProducts, Product } from '@/db/queries/products';
-import { restockProducts } from '@/db/queries/purchases';
+import { getAllProducts } from '@/db/queries/products';
+import { createInventoryCount, getInventoryCounts, createAccountReconciliation } from '@/db/queries/inventory';
 import { getActiveAccounts } from '@/db/queries/accounts';
-import { Minus, Plus, Search, CheckCircle, PackagePlus, AlertCircle } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Search, CheckCircle, PackageSearch, History, Scale, Filter } from 'lucide-react';
 import { formatMoney, parseMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 export default function InventoryPage() {
+  const [activeTab, setActiveTab] = useState<'new_count' | 'history' | 'reconciliation'>('new_count');
+
+  return (
+    <div className="flex flex-col h-full bg-background relative isolate">
+      <header className="bg-surface border-b border-border p-4 sticky top-0 z-10 shrink-0">
+        <div className="max-w-4xl mx-auto space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-accent/10 text-accent rounded-xl flex items-center justify-center shrink-0">
+              <PackageSearch className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">إدارة المخزون والتسويات</h1>
+              <p className="text-sm text-text-secondary">متابعة الأرصدة وجرد المنتجات</p>
+            </div>
+          </div>
+          
+          <div className="flex gap-2 bg-muted p-1 rounded-xl w-fit">
+            <button
+              onClick={() => setActiveTab('new_count')}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2",
+                activeTab === 'new_count' ? "bg-surface text-accent shadow-sm" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <PackageSearch className="w-4 h-4" />
+              جرد جديد
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2",
+                activeTab === 'history' ? "bg-surface text-accent shadow-sm" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <History className="w-4 h-4" />
+              سجل الجرد
+            </button>
+            <button
+              onClick={() => setActiveTab('reconciliation')}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2",
+                activeTab === 'reconciliation' ? "bg-surface text-accent shadow-sm" : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <Scale className="w-4 h-4" />
+              تسوية حساب
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-y-auto p-4 bg-background content-area">
+        <div className="max-w-4xl mx-auto">
+          {activeTab === 'new_count' && <NewCountTab />}
+          {activeTab === 'history' && <HistoryTab />}
+          {activeTab === 'reconciliation' && <ReconciliationTab />}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function NewCountTab() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const [stockAdditions, setStockAdditions] = useState<Record<string, { qty: number, cost: string }>>({});
-  const [supplier, setSupplier] = useState('');
-  const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  
+  const [actualCounts, setActualCounts] = useState<Record<string, { actual_qty: string, reason: string }>>({});
+  const { requireAdminAction } = useAuth();
 
-  const { data: products = [], isLoading: isLoadingProducts } = useQuery({
-    queryKey: ['products', search, 'all', false], // only active products
-    queryFn: () => getAllProducts(search, 'all', false),
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ['products', search, categoryFilter, false],
+    queryFn: () => getAllProducts(search, categoryFilter === 'all' ? undefined : categoryFilter, false),
   });
+
+  const trackableProducts = products.filter(p => p.track_stock);
+
+  const handleUpdateActualQty = (productId: string, value: string) => {
+    setActualCounts(prev => ({
+      ...prev,
+      [productId]: { ...prev[productId], actual_qty: value, reason: prev[productId]?.reason || '' }
+    }));
+  };
+
+  const handleUpdateReason = (productId: string, value: string) => {
+    setActualCounts(prev => ({
+      ...prev,
+      [productId]: { ...prev[productId], reason: value, actual_qty: prev[productId]?.actual_qty || '' }
+    }));
+  };
+
+  const inventoryMutation = useMutation({
+    mutationFn: (items: any[]) => createInventoryCount(items, 'جرد روتيني'),
+    onSuccess: () => {
+      toast.success('تم الجرد وتحديث الأرصدة بنجاح');
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-counts'] });
+      setActualCounts({});
+    },
+    onError: (err: any) => {
+      toast.error('حدث خطأ أثناء حفظ الجرد');
+    }
+  });
+
+  const changedItems = useMemo(() => {
+    const items: any[] = [];
+    Object.entries(actualCounts).forEach(([productId, data]: [string, any]) => {
+      if (data.actual_qty && data.actual_qty !== '') {
+        const p = trackableProducts.find(x => x.id === productId);
+        if (p) {
+          const actual = parseInt(data.actual_qty);
+          if (!isNaN(actual) && actual !== p.stock_qty) {
+            items.push({
+              product_id: productId,
+              system_qty: p.stock_qty,
+              actual_qty: actual,
+              reason: data.reason
+            });
+          }
+        }
+      }
+    });
+    return items;
+  }, [actualCounts, trackableProducts]);
+
+  const handleSubmit = async () => {
+    if (changedItems.length === 0) {
+      toast.error('لا توجد فروقات منتجات مدخلة');
+      return;
+    }
+    requireAdminAction(() => inventoryMutation.mutate(changedItems));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="w-5 h-5 absolute end-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+          <input 
+            type="text" 
+            placeholder="بحث عن منتج..." 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-11 ps-4 pe-10 rounded-xl border border-border bg-background focus:border-accent outline-none"
+          />
+        </div>
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="h-11 px-3 rounded-xl border border-border bg-background focus:border-accent outline-none"
+        >
+          <option value="all">كل الفئات</option>
+          <option value="device">أجهزة</option>
+          <option value="accessory">إكسسوارات</option>
+          <option value="sim">شرائح</option>
+          <option value="package">بطاقات/باقات</option>
+        </select>
+      </div>
+
+      {isLoading ? (
+        <div className="p-8 text-center"><div className="animate-spin w-8 h-8 mx-auto border-4 border-accent/30 border-t-accent rounded-full"></div></div>
+      ) : trackableProducts.length === 0 ? (
+        <div className="text-center p-8 bg-surface rounded-2xl border border-border">
+          <p className="text-secondary">لا توجد منتجات تطابق بحثك.</p>
+        </div>
+      ) : (
+        <div className="bg-surface border border-border rounded-xl px-2 py-4 space-y-3">
+          <div className="flex font-bold px-2 text-sm text-text-secondary gap-4">
+            <div className="flex-1">المنتج</div>
+            <div className="w-20 text-center">نظامي</div>
+            <div className="w-24 text-center">فعلي</div>
+            <div className="w-1/3">السبب (إذا اختلف)</div>
+          </div>
+          {trackableProducts.map(product => {
+            const actualQty = actualCounts[product.id]?.actual_qty ?? '';
+            const reason = actualCounts[product.id]?.reason ?? '';
+            const isDiff = actualQty !== '' && parseInt(actualQty) !== product.stock_qty;
+            
+            return (
+              <div key={product.id} className={cn("flex flex-wrap sm:flex-nowrap items-center gap-4 p-2 rounded-lg border", isDiff ? "border-warning/50 bg-warning-bg/20" : "border-border/50")}>
+                <div className="flex-1 min-w-[150px] font-medium">{product.name}</div>
+                <div className="w-20 text-center font-bold numeric">{product.stock_qty}</div>
+                <div className="w-24 shrink-0">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder={product.stock_qty.toString()}
+                    value={actualQty}
+                    onChange={(e) => handleUpdateActualQty(product.id, e.target.value)}
+                    className="w-full text-center h-[var(--input-height)] rounded-lg border border-border focus:border-accent outline-none numeric font-bold bg-background"
+                  />
+                </div>
+                <div className="w-full sm:w-1/3 shrink-0 mt-2 sm:mt-0">
+                  {isDiff && (
+                    <input
+                      type="text"
+                      placeholder="سبب التعديل..."
+                      value={reason}
+                      onChange={(e) => handleUpdateReason(product.id, e.target.value)}
+                      className="w-full h-[var(--input-height)] px-3 rounded-lg border border-border focus:border-accent outline-none bg-background text-sm"
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {changedItems.length > 0 && (
+        <div className="sticky bottom-0 bg-surface/90 backdrop-blur border-t border-border p-4 flex items-center justify-between shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] rounded-t-xl z-10 mt-8 mb-4">
+          <div className="font-bold">
+            منتجات معدلة: <span className="text-accent numeric">{changedItems.length}</span>
+          </div>
+          <button
+            onClick={handleSubmit}
+            className="h-[var(--btn-height)] px-6 bg-accent text-white font-bold rounded-lg hover:bg-accent/90 transition-colors flex items-center gap-2"
+          >
+            <CheckCircle className="w-5 h-5" />
+            إتمام الجرد
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HistoryTab() {
+  const { data: counts = [], isLoading } = useQuery({
+    queryKey: ['inventory-counts'],
+    queryFn: getInventoryCounts
+  });
+
+  if (isLoading) return <div className="p-12 text-center"><div className="animate-spin w-8 h-8 mx-auto border-4 border-accent/30 border-t-accent rounded-full"></div></div>;
+
+  if (counts.length === 0) {
+    return <div className="text-center p-12 bg-surface rounded-2xl border border-border text-text-secondary">لا توجد عمليات جرد مسجلة</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {counts.map(count => (
+        <div key={count.id} className="bg-surface border border-border rounded-xl p-4 space-y-3">
+          <div className="flex justify-between items-center border-b border-border pb-3">
+            <span className="font-bold">عملية جرد #{count.id.slice(0,6)}</span>
+            <span className="text-sm text-text-secondary">{count.count_date}</span>
+          </div>
+          {count.notes && <div className="text-sm bg-muted p-2 rounded">{count.notes}</div>}
+          <div className="space-y-1">
+            {count.items.map((item: any) => {
+              const diff = item.actual_qty - item.system_qty;
+              return (
+                <div key={item.id} className="flex justify-between items-center py-2 border-b border-border/30 text-sm">
+                  <span className="flex-1 font-medium">{item.product_name}</span>
+                  <div className="w-1/2 flex items-center justify-between text-center gap-2">
+                    <span className="w-12 text-text-secondary line-through numeric">{item.system_qty}</span>
+                    <span className="w-12 font-bold numeric">{item.actual_qty}</span>
+                    <span className={cn("w-16 font-bold numeric", diff > 0 ? "text-success" : "text-danger")} dir="ltr">
+                      {diff > 0 ? '+' : ''}{diff}
+                    </span>
+                    <span className="w-1/3 text-[10px] text-text-secondary truncate text-start">{item.reason || '-'}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReconciliationTab() {
+  const queryClient = useQueryClient();
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [actualBalanceStr, setActualBalanceStr] = useState('');
+  const { requireAdminAction } = useAuth();
 
   const { data: accounts = [] } = useQuery({
     queryKey: ['active-accounts'],
     queryFn: getActiveAccounts,
   });
 
-  // Default to first account if available
-  if (accounts.length > 0 && !selectedAccountId) {
-    setSelectedAccountId(accounts[0].id);
-  }
+  const selectedAccount = accounts.find(a => a.id === selectedAccountId);
+  const diff = selectedAccount && actualBalanceStr !== '' ? parseMoney(actualBalanceStr) - selectedAccount.balance : 0;
 
-  const trackableProducts = products.filter(p => p.track_stock);
-
-  const calculateTotalCost = () => {
-    let total = 0;
-    Object.values(stockAdditions as Record<string, { qty: number, cost: string }>).forEach(addition => {
-      if (addition.qty > 0) {
-        total += parseMoney(addition.cost);
-      }
-    });
-    return total;
-  };
-
-  const totalCost = calculateTotalCost();
-  const hasAdditions = Object.values(stockAdditions as Record<string, { qty: number, cost: string }>).some(a => a.qty > 0);
-
-  const handleUpdateAddition = (productId: string, field: 'qty' | 'cost', value: any) => {
-    setStockAdditions(prev => {
-      const current = prev[productId] || { qty: 0, cost: '' };
-      return {
-        ...prev,
-        [productId]: { ...current, [field]: value }
-      };
-    });
-  };
-
-  const restockMutation = useMutation({
-    mutationFn: () => {
-      const items = Object.entries(stockAdditions as Record<string, { qty: number, cost: string }>)
-        .filter(([_, data]) => data.qty > 0)
-        .map(([id, data]) => ({
-          productId: id,
-          quantity: data.qty,
-          costPrice: parseMoney(data.cost)
-        }));
-
-      return restockProducts({
-        items,
-        supplierName: supplier,
-        totalCost,
-        paidAmount: totalCost, // Assuming paid in full for simplicity
-        accountId: selectedAccountId
-      });
-    },
+  const reconMutation = useMutation({
+    mutationFn: () => createAccountReconciliation(selectedAccountId, parseMoney(actualBalanceStr)),
     onSuccess: () => {
-      toast.success('تم توريد المخزون بنجاح');
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('تمت تسوية الحساب بنجاح');
       queryClient.invalidateQueries({ queryKey: ['active-accounts'] });
-      setStockAdditions({});
-      setSupplier('');
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['ledger-entries'] });
+      setSelectedAccountId('');
+      setActualBalanceStr('');
     },
     onError: (err: any) => {
-      toast.error('خطأ أثناء التوريد: ' + err.message);
+      toast.error('حدث خطأ أثناء تسوية الحساب');
     }
   });
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAccountId) {
+      toast.error('الرجاء اختيار الحساب');
+      return;
+    }
+    if (diff === 0) {
+      toast.error('الرصيد الفعلي يطابق رصيد النظام!');
+      return;
+    }
+    requireAdminAction(() => reconMutation.mutate());
+  };
+
   return (
-    <div className="flex flex-col h-full bg-background relative isolate">
-      <header className="bg-surface border-b border-border p-4 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-accent/10 text-accent rounded-xl flex items-center justify-center shrink-0">
-              <PackagePlus className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">توريد للمخزون</h1>
-              <p className="text-sm text-text-secondary">إضافة كميات جديدة للمنتجات المتعقبة</p>
-            </div>
-          </div>
-
-          <div className="relative">
-            <Search className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary" />
-            <input 
-              type="text" 
-              placeholder="ابحث عن صنف لإضافته للكميات..." 
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-11 pl-4 pr-10 rounded-xl border border-border bg-background focus:border-accent focus:ring-1 focus:ring-accent outline-none"
-            />
-          </div>
+    <div className="bg-surface border border-border rounded-xl p-4 max-w-md mx-auto mt-8">
+      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+        <Scale className="w-5 h-5 text-accent" />
+        تسوية حساب مالي
+      </h2>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">اختر الحساب *</label>
+          <select
+            value={selectedAccountId}
+            onChange={e => setSelectedAccountId(e.target.value)}
+            className="w-full h-[var(--input-height)] bg-surface border border-border rounded-lg px-3 outline-none focus:border-accent font-medium"
+            required
+          >
+            <option value="">-- اختر الحساب --</option>
+            {accounts.map(acc => (
+              <option key={acc.id} value={acc.id}>{acc.name} (نظامي: {formatMoney(acc.balance)})</option>
+            ))}
+          </select>
         </div>
-      </header>
+        
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">الرصيد الفعلي الموجود *</label>
+          <input
+            type="number"
+            step="any"
+            value={actualBalanceStr}
+            onChange={e => setActualBalanceStr(e.target.value)}
+            className="w-full h-[var(--input-height)] bg-surface border border-border rounded-lg px-3 outline-none focus:border-accent font-bold numeric"
+            required
+            placeholder="0.00"
+          />
+        </div>
 
-      <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-        {/* Products List */}
-        <main className="flex-1 overflow-y-auto p-4 bg-background">
-          <div className="max-w-4xl mx-auto space-y-3">
-            {isLoadingProducts ? (
-              <div className="p-8 text-center"><div className="animate-spin w-8 h-8 mx-auto border-4 border-accent/30 border-t-accent rounded-full"></div></div>
-            ) : trackableProducts.length === 0 ? (
-              <div className="text-center p-8 bg-surface rounded-2xl border border-border">
-                <p className="text-secondary">لا توجد منتجات متعقبة للمخزون تطابق بحثك.</p>
-              </div>
-            ) : (
-              trackableProducts.map(product => {
-                const isLowStock = product.stock_qty <= product.min_stock;
-                const addition = stockAdditions[product.id] || { qty: 0, cost: '' };
-
-                return (
-                  <div key={product.id} className="bg-surface border border-border rounded-xl p-4 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-                    <div>
-                      <h3 className="font-bold text-lg">{product.name}</h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-sm text-text-secondary">المخزون الحالي:</span>
-                        <span className={cn(
-                          "font-bold numeric",
-                          isLowStock ? "text-danger" : "text-success"
-                        )}>
-                          {product.stock_qty}
-                        </span>
-                        {isLowStock && <AlertCircle className="w-4 h-4 text-danger inline-block" />}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 items-center bg-muted/30 p-2 rounded-xl border border-border/50">
-                      <div className="flex items-center gap-2 bg-surface rounded-lg border border-border px-2">
-                        <span className="text-xs text-text-secondary whitespace-nowrap">الكمية:</span>
-                        <button 
-                          onClick={() => handleUpdateAddition(product.id, 'qty', Math.max(0, addition.qty - 1))}
-                          className="w-8 h-8 flex items-center justify-center hover:text-danger"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                        <input
-                          type="number"
-                          min="0"
-                          value={addition.qty}
-                          onChange={(e) => handleUpdateAddition(product.id, 'qty', parseInt(e.target.value) || 0)}
-                          className="w-12 h-8 text-center font-bold bg-transparent outline-none numeric"
-                        />
-                        <button 
-                          onClick={() => handleUpdateAddition(product.id, 'qty', addition.qty + 1)}
-                          className="w-8 h-8 flex items-center justify-center hover:text-success"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      <div className="relative">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="التكلفة الإجمالية"
-                          value={addition.cost}
-                          onChange={(e) => handleUpdateAddition(product.id, 'cost', e.target.value)}
-                          className={cn(
-                            "w-36 h-10 px-3 pl-8 rounded-lg border focus:ring-1 outline-none numeric font-bold",
-                            addition.qty > 0 ? "border-accent focus:ring-accent bg-background" : "border-border bg-surface text-text-secondary"
-                          )}
-                          disabled={addition.qty === 0}
-                        />
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-text-secondary">د.ع</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </main>
-
-        {/* Sidebar Summary */}
-        <aside className="w-full lg:w-96 bg-surface border-t lg:border-t-0 lg:border-s border-border flex flex-col shrink-0">
-          <div className="p-4 border-b border-border bg-background">
-            <h2 className="font-bold text-lg">تفاصيل التوريد</h2>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">اسم المورد (اختياري)</label>
-              <input
-                type="text"
-                value={supplier}
-                onChange={(e) => setSupplier(e.target.value)}
-                className="w-full px-3 h-11 rounded-lg border border-border bg-background focus:border-accent outline-none"
-                placeholder="شركة الجوال للحاسبات..."
-              />
+        {selectedAccount && actualBalanceStr !== '' && diff !== 0 && (
+          <div className="p-3 bg-muted rounded-xl text-sm space-y-2">
+            <div className="flex justify-between">
+              <span>رصيد النظام:</span>
+              <span className="font-bold numeric">{formatMoney(selectedAccount.balance)}</span>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">دفع من حساب</label>
-              <select
-                value={selectedAccountId}
-                onChange={(e) => setSelectedAccountId(e.target.value)}
-                className="w-full px-3 h-11 rounded-lg border border-border bg-background focus:border-accent outline-none"
-              >
-                {accounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>{acc.name} ({formatMoney(acc.balance)})</option>
-                ))}
-              </select>
+            <div className="flex justify-between">
+              <span>الرصيد الفعلي:</span>
+              <span className="font-bold numeric">{formatMoney(parseMoney(actualBalanceStr))}</span>
             </div>
-
-            <div className="bg-muted p-4 rounded-xl space-y-2 mt-4">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-text-secondary">عدد الأصناف المضافة</span>
-                <span className="font-bold numeric">{Object.values(stockAdditions as Record<string, {qty: number, cost: string}>).filter(a => a.qty > 0).length}</span>
-              </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-text-secondary">إجمالي التكلفة</span>
-                <span className="font-bold numeric text-danger">{formatMoney(totalCost)}</span>
-              </div>
+            <div className="flex justify-between border-t border-border pt-2 border-dashed font-bold">
+              <span>الفرق للتسوية:</span>
+              <span className={cn("numeric", diff > 0 ? "text-success" : "text-danger")} dir="ltr">
+                {diff > 0 ? '+' : ''}{formatMoney(diff)}
+              </span>
             </div>
           </div>
+        )}
 
-          <div className="p-4 bg-background border-t border-border pb-[calc(1rem+env(safe-area-inset-bottom))]">
-            <button
-              onClick={() => restockMutation.mutate()}
-              disabled={!hasAdditions || !selectedAccountId || restockMutation.isPending}
-              className="w-full h-[var(--btn-height)] bg-accent text-white font-bold rounded-lg disabled:opacity-50 hover:bg-accent-hover transition-colors shadow-sm flex items-center justify-center gap-2"
-            >
-              <CheckCircle className="w-5 h-5" />
-              تأكيد وحفظ
-            </button>
-          </div>
-        </aside>
-      </div>
+        <button
+          type="submit"
+          className="w-full h-[var(--btn-height)] bg-accent text-white font-bold rounded-lg hover:bg-accent/90 transition-colors flex items-center justify-center gap-2 mt-4"
+        >
+          <CheckCircle className="w-5 h-5" />
+          اعتماد التسوية
+        </button>
+      </form>
     </div>
   );
 }
+

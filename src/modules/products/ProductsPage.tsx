@@ -57,13 +57,13 @@ export default function ProductsPage() {
 
           <div className="flex flex-col md:flex-row gap-3">
             <div className="relative flex-1">
-              <Search className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+              <Search className="w-5 h-5 absolute end-3 top-1/2 -translate-y-1/2 text-text-secondary" />
               <input 
                 type="text" 
                 placeholder="بحث بالاسم أو الكود (SKU)..." 
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full h-11 pl-4 pr-10 rounded-xl border border-border bg-background focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+                className="w-full h-11 ps-4 pe-10 rounded-xl border border-border bg-background focus:border-accent focus:ring-1 focus:ring-accent outline-none"
               />
             </div>
             <div className="flex gap-2 pb-2 md:pb-0 overflow-x-auto hide-scrollbar">
@@ -126,18 +126,18 @@ export default function ProductsPage() {
                     )}
                   >
                     {!product.is_active && (
-                       <div className="absolute top-2 left-2 bg-danger/10 text-danger text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                       <div className="absolute top-2 start-2 bg-danger/10 text-danger text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                          <XCircle className="w-3 h-3" /> متوقف
                        </div>
                     )}
                     {product.is_quick_add && product.is_active && (
-                       <div className="absolute top-2 left-2 bg-success/10 text-success text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                       <div className="absolute top-2 start-2 bg-success/10 text-success text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                          <CheckCircle className="w-3 h-3" /> سريع
                        </div>
                     )}
 
                     <div className="text-xs text-text-secondary mb-1">{categoryName}</div>
-                    <h3 className="font-bold text-lg leading-tight mb-1 pr-14">{product.name}</h3>
+                    <h3 className="font-bold text-lg leading-tight mb-1 pe-14">{product.name}</h3>
                     {product.sku && <div className="text-xs text-secondary font-mono bg-muted inline-block px-1.5 rounded mb-3">{product.sku}</div>}
                     
                     <div className="flex justify-between items-end mt-4">

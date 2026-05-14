@@ -75,16 +75,23 @@ export async function addProduct(data: Omit<Product, 'id' | 'is_active'>) {
   const id = nanoid();
   const now = new Date().toISOString();
   
-  await dbClient.run(
-    `INSERT INTO products (id, name, sku, category, sale_price, stock_qty, min_stock, track_stock, is_quick_add, is_active, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-    [
-      id, data.name, data.sku || null, data.category, data.sale_price, 
-      data.stock_qty, data.min_stock, data.track_stock ? 1 : 0, 
-      data.is_quick_add ? 1 : 0, data.notes || null, now, now
-    ]
-  );
-  return id;
+  try {
+    await dbClient.run(
+      `INSERT INTO products (id, name, sku, category, sale_price, stock_qty, min_stock, track_stock, is_quick_add, is_active, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+      [
+        id, data.name, data.sku || null, data.category, data.sale_price, 
+        data.stock_qty, data.min_stock, data.track_stock ? 1 : 0, 
+        data.is_quick_add ? 1 : 0, data.notes || null, now, now
+      ]
+    );
+    return id;
+  } catch (err: any) {
+    if (err.message?.includes('UNIQUE constraint failed: products.sku')) {
+      throw new Error('رمز الباركود (SKU) مستخدم مسبقاً لصنف آخر');
+    }
+    throw err;
+  }
 }
 
 export async function updateProduct(id: string, data: Partial<Omit<Product, 'id'>>) {
@@ -109,10 +116,17 @@ export async function updateProduct(id: string, data: Partial<Omit<Product, 'id'
   params.push(now);
   params.push(id);
 
-  await dbClient.run(
-    `UPDATE products SET ${updates.join(', ')} WHERE id = ?`,
-    params
-  );
+  try {
+    await dbClient.run(
+      `UPDATE products SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+  } catch (err: any) {
+    if (err.message?.includes('UNIQUE constraint failed: products.sku')) {
+      throw new Error('رمز الباركود (SKU) مستخدم مسبقاً لصنف آخر');
+    }
+    throw err;
+  }
 }
 
 export async function toggleProductActive(id: string, isActive: boolean) {

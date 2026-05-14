@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getRecentLedgerEntries, getDailySummary } from '@/db/queries/operations';
 import { formatMoney } from '@/lib/money';
-import { ArrowDownRight, ArrowUpRight, FileText, ArrowRightLeft, Calendar } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, FileText, ArrowRightLeft, PlusCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { ar } from 'date-fns/locale';
+import { TopupDialog } from './components/TopupDialog';
+import { TransferDialog } from './components/TransferDialog';
 
 export default function OperationsPage() {
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [isTopupOpen, setIsTopupOpen] = useState(false);
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
 
   const { data: summary } = useQuery({
     queryKey: ['daily-summary', date],
@@ -28,13 +31,29 @@ export default function OperationsPage() {
             <h1 className="text-2xl font-bold">الحركة المالية والسجل</h1>
             <p className="text-sm text-text-secondary">متابعة كافة حركات الصناديق والمصروفات والمبيعات</p>
           </div>
-          <div className="flex items-center gap-2 bg-muted p-1 rounded-xl">
-            <input 
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="bg-transparent border-none outline-none font-medium px-2 py-1 text-sm cursor-pointer"
-            />
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setIsTopupOpen(true)}
+              className="h-[var(--btn-height)] px-4 bg-surface border border-border flex items-center gap-2 rounded-lg hover:border-accent font-medium text-sm transition-colors"
+            >
+              <PlusCircle className="w-4 h-4 text-accent" />
+              شحن رصيد
+            </button>
+            <button 
+              onClick={() => setIsTransferOpen(true)}
+              className="h-[var(--btn-height)] px-4 bg-surface border border-border flex items-center gap-2 rounded-lg hover:border-accent font-medium text-sm transition-colors"
+            >
+              <ArrowRightLeft className="w-4 h-4 text-accent" />
+              تحويل
+            </button>
+            <div className="flex items-center gap-2 bg-muted p-1 rounded-xl">
+              <input 
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="bg-transparent border-none outline-none font-medium px-2 py-1 text-sm cursor-pointer"
+              />
+            </div>
           </div>
         </div>
       </header>
@@ -90,7 +109,7 @@ export default function OperationsPage() {
                           <div className="flex items-center gap-2 text-xs text-text-secondary">
                             <span className="bg-muted px-1.5 py-0.5 rounded">{entry.account_name}</span>
                             <span>•</span>
-                            <span>{format(new Date(entry.created_at), 'hh:mm a', { locale: ar })}</span>
+                            <span>{format(new Date(entry.created_at), 'HH:mm')}</span>
                             <span>•</span>
                             <span>{entry.entry_date}</span>
                           </div>
@@ -111,6 +130,9 @@ export default function OperationsPage() {
           </div>
         </div>
       </main>
+
+      <TopupDialog isOpen={isTopupOpen} onClose={() => setIsTopupOpen(false)} />
+      <TransferDialog isOpen={isTransferOpen} onClose={() => setIsTransferOpen(false)} />
     </div>
   );
 }

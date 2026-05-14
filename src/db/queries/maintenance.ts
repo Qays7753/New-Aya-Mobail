@@ -6,39 +6,50 @@ import { format } from 'date-fns';
 export interface MaintenanceJob {
   id: string;
   job_number: string;
+  job_date: string;
   customer_name: string;
   customer_phone: string | null;
-  device_model: string;
+  device_type: string;
   issue_description: string;
-  expected_cost: number | null;
-  status: 'received' | 'in_progress' | 'completed' | 'delivered';
-  received_at: string;
-  completed_at: string | null;
-  delivered_at: string | null;
+  status: 'new' | 'in_progress' | 'ready' | 'delivered' | 'cancelled';
+  estimated_cost: number | null;
+  final_amount: number | null;
+  payment_account_id: string | null;
   notes: string | null;
+  delivered_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
-export async function getJobs(status?: string): Promise<MaintenanceJob[]> {
-  let query = 'SELECT * FROM maintenance_jobs';
+export async function getJobs(status?: string, keyword?: string): Promise<MaintenanceJob[]> {
+  let query = 'SELECT * FROM maintenance_jobs WHERE 1=1';
   const params: any[] = [];
   
   if (status && status !== 'all') {
-    query += ' WHERE status = ?';
+    query += ' AND status = ?';
     params.push(status);
   }
+
+  if (keyword) {
+    query += ' AND (job_number LIKE ? OR customer_name LIKE ? OR device_type LIKE ?)';
+    params.push(`%${keyword}%`);
+    params.push(`%${keyword}%`);
+    params.push(`%${keyword}%`);
+  }
   
-  query += ' ORDER BY received_at DESC';
+  query += ' ORDER BY created_at DESC';
   
   const results = await dbClient.query(query, params);
   return results as MaintenanceJob[];
 }
 
 export async function addJob(data: {
+  job_date: string;
   customer_name: string;
   customer_phone: string;
-  device_model: string;
+  device_type: string;
   issue_description: string;
-  expected_cost: number;
+  estimated_cost: number;
   notes: string;
 }) {
   const id = nanoid();
@@ -59,13 +70,13 @@ export async function addJob(data: {
   stmts.push({
     sql: `
       INSERT INTO maintenance_jobs 
-      (id, job_number, customer_name, customer_phone, device_model, issue_description, expected_cost, status, received_at, notes, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'received', ?, ?, ?)
+      (id, job_number, job_date, customer_name, customer_phone, device_type, issue_description, estimated_cost, status, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)
     `,
     params: [
-      id, jobNumber, data.customer_name, data.customer_phone || null, 
-      data.device_model, data.issue_description, data.expected_cost, 
-      now, data.notes || null, now
+      id, jobNumber, data.job_date, data.customer_name, data.customer_phone || null, 
+      data.device_type, data.issue_description, data.estimated_cost, 
+      data.notes || null, now, now
     ]
   });
   
@@ -73,21 +84,43 @@ export async function addJob(data: {
   return id;
 }
 
-export async function updateJobStatus(id: string, status: MaintenanceJob['status']) {
-  const now = new Date().toISOString();
-  let query = `UPDATE maintenance_jobs SET status = ?`;
-  const params: any[] = [status];
+export async function updateJobStatus(id: string, status: MaintenanceJob['status'], final_amount?: number, payment_account_id?: string) {
+  const now = new Date();
+  const dateStr = format(now, 'yyyy-MM-dd HH:mm:ss');
+  const onlyDateStr = format(now, 'yyyy-MM-dd');
   
-  if (status === 'completed') {
-    query += `, completed_at = ?`;
-    params.push(now);
-  } else if (status === 'delivered') {
-    query += `, delivered_at = ?`;
-    params.push(now);
+  if (status === 'delivered') {
+    if (final_amount === undefined || !payment_account_id) {
+        throw new Error('Final amount and account are required for delivery');
+    }
+    
+    const jobResult = await dbClient.query("SELECT job_number FROM maintenance_jobs WHERE id = ?", [id]);
+    const job_number = jobResult[0]?.job_number || '';
+    
+    const accountResult = await dbClient.query("SELECT name FROM accounts WHERE id = ?", [payment_account_id]);
+    const account_name = accountResult[0]?.name || null;
+
+    const tx = [
+      {
+        sql: `UPDATE maintenance_jobs SET status = ?, updated_at = ?, delivered_at = ?, final_amount = ?, payment_account_id = ? WHERE id = ?`,
+        params: [status, dateStr, dateStr, final_amount, payment_account_id, id]
+      },
+      {
+        sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
+        params: [final_amount, payment_account_id]
+      },
+      {
+        sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [nanoid(), onlyDateStr, payment_account_id, account_name, 'credit', final_amount, 'maintenance', id, `إيراد صيانة: ${job_number}`, dateStr]
+      }
+    ];
+    await dbClient.batchRun(tx);
+  } else {
+    // Other statuses don't need financial transactions
+    await dbClient.run(
+      `UPDATE maintenance_jobs SET status = ?, updated_at = ? WHERE id = ?`,
+      [status, dateStr, id]
+    );
   }
-  
-  query += ` WHERE id = ?`;
-  params.push(id);
-  
-  await dbClient.run(query, params);
 }
