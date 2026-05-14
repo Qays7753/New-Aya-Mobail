@@ -1,25 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getRecentExpenses, addExpense } from '@/db/queries/expenses';
+import { getRecentExpenses, addExpense, getExpenseCategories } from '@/db/queries/expenses';
 import { getActiveAccounts } from '@/db/queries/accounts';
 import { formatMoney, parseMoney } from '@/lib/money';
-import { Plus, Receipt, CheckCircle, Trash2 } from 'lucide-react';
+import { Plus, Receipt, CheckCircle, Settings } from 'lucide-react';
 import { toast } from 'sonner';
-
-const EXPENSE_CATEGORIES = [
-  'إيجار',
-  'رواتب',
-  'كهرباء/ماء/انترنت',
-  'ضيافة ونثريات',
-  'صيانة المحل',
-  'أخرى'
-];
+import { ExpenseCategoriesDialog } from './components/ExpenseCategoriesDialog';
 
 export default function ExpensesPage() {
   const queryClient = useQueryClient();
   const [isAddMode, setIsAddMode] = useState(false);
+  const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [amountInput, setAmountInput] = useState('');
-  const [category, setCategory] = useState(EXPENSE_CATEGORIES[0]);
+  const [categoryId, setCategoryId] = useState('');
   const [description, setDescription] = useState('');
   const [accountId, setAccountId] = useState('');
 
@@ -28,22 +21,42 @@ export default function ExpensesPage() {
     queryFn: () => getRecentExpenses(50)
   });
 
+  const { data: categories = [] } = useQuery({
+    queryKey: ['expense-categories'],
+    queryFn: () => getExpenseCategories(false)
+  });
+
   const { data: accounts = [] } = useQuery({
     queryKey: ['active-accounts'],
     queryFn: getActiveAccounts,
   });
 
-  if (accounts.length > 0 && !accountId) {
-    setAccountId(accounts[0].id);
-  }
+  useEffect(() => {
+    if (accounts.length > 0 && !accountId) {
+      setAccountId(accounts[0].id);
+    }
+  }, [accounts, accountId]);
+
+  useEffect(() => {
+    if (categories.length > 0 && !categoryId) {
+      setCategoryId(categories[0].id);
+    }
+  }, [categories, categoryId]);
 
   const expenseMutation = useMutation({
-    mutationFn: () => addExpense({
-      amount: parseMoney(amountInput),
-      category,
-      description,
-      accountId
-    }),
+    mutationFn: () => {
+      const selectedCategory = categories.find(c => c.id === categoryId);
+      const selectedAccount = accounts.find(a => a.id === accountId);
+      
+      return addExpense({
+        amount: parseMoney(amountInput),
+        category_id: categoryId,
+        category_name: selectedCategory?.name || '',
+        description,
+        accountId: accountId,
+        account_name: selectedAccount?.name || ''
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['active-accounts'] });
@@ -65,12 +78,20 @@ export default function ExpensesPage() {
             <h1 className="text-2xl font-bold">المصروفات</h1>
             <p className="text-sm text-text-secondary">تسجيل مصاريف المحل اليومية</p>
           </div>
-          <button 
-            onClick={() => setIsAddMode(!isAddMode)}
-            className="bg-accent text-white px-4 h-11 rounded-lg font-bold flex items-center gap-2 hover:bg-accent-hover transition-colors shadow-sm"
-          >
-            {isAddMode ? 'إلغاء' : <><Plus className="w-5 h-5"/> تسجيل مصروف</>}
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setIsCategoriesOpen(true)}
+              className="bg-muted text-text-primary px-3 h-11 rounded-lg font-medium flex items-center gap-2 hover:bg-muted/80 transition-colors shadow-sm"
+            >
+              <Settings className="w-5 h-5"/>
+            </button>
+            <button 
+              onClick={() => setIsAddMode(!isAddMode)}
+              className="bg-accent text-white px-4 h-11 rounded-lg font-bold flex items-center gap-2 hover:bg-accent-hover transition-colors shadow-sm"
+            >
+              {isAddMode ? 'إلغاء' : <><Plus className="w-5 h-5"/> تسجيل مصروف</>}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -89,21 +110,21 @@ export default function ExpensesPage() {
                       inputMode="decimal"
                       value={amountInput}
                       onChange={(e) => setAmountInput(e.target.value)}
-                      className="w-full h-12 pl-12 pr-4 rounded-xl border border-border bg-background focus:border-accent focus:ring-1 outline-none text-xl font-bold numeric"
+                      className="w-full h-12 pe-12 ps-4 rounded-xl border border-border bg-background focus:border-accent focus:ring-1 outline-none text-xl font-bold numeric"
                       placeholder="0"
                     />
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary text-sm font-medium">د.ع</span>
+                    <span className="absolute start-4 top-1/2 -translate-y-1/2 text-text-secondary text-sm font-medium">د.ع</span>
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium mb-1">التبويب <span className="text-danger">*</span></label>
                   <select 
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
                     className="w-full h-12 px-4 rounded-xl border border-border bg-background focus:border-accent outline-none font-medium"
                   >
-                    {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
               </div>
@@ -134,7 +155,7 @@ export default function ExpensesPage() {
 
               <button
                 onClick={() => expenseMutation.mutate()}
-                disabled={expenseMutation.isPending || !amountInput || !description}
+                disabled={expenseMutation.isPending || !amountInput || !description || !categoryId}
                 className="w-full h-[var(--btn-height)] bg-accent text-white font-bold rounded-xl disabled:opacity-50 hover:bg-accent-hover transition-colors shadow-sm flex items-center justify-center gap-2"
               >
                 <CheckCircle className="w-5 h-5" /> تأكيد المصروف
@@ -157,16 +178,16 @@ export default function ExpensesPage() {
             ) : (
               <div className="divide-y divide-border">
                 {expenses.map(expense => {
-                  const acc = accounts.find(a => a.id === expense.account_id);
                   return (
                     <div key={expense.id} className="p-4 hover:bg-muted/30 transition-colors flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-bold">{expense.category}</span>
+                          <span className="font-mono text-sm bg-muted px-2 py-0.5 rounded text-text-secondary">{expense.expense_number}</span>
+                          <span className="font-bold">{expense.category_name}</span>
                           <span className="text-sm bg-muted px-2 py-0.5 rounded text-text-secondary">{expense.expense_date}</span>
                         </div>
                         <p className="text-secondary text-sm">{expense.description}</p>
-                        <p className="text-xs text-text-secondary mt-1">عبر: {acc?.name || 'حساب غير معروف'}</p>
+                        <p className="text-xs text-text-secondary mt-1">عبر: {expense.account_name}</p>
                       </div>
                       <div className="font-bold text-lg text-danger numeric whitespace-nowrap bg-danger-bg px-3 py-1 rounded-lg">
                         - {formatMoney(expense.amount)}
@@ -179,6 +200,8 @@ export default function ExpensesPage() {
           </div>
         </div>
       </main>
+      
+      <ExpenseCategoriesDialog isOpen={isCategoriesOpen} onClose={() => setIsCategoriesOpen(false)} />
     </div>
   );
 }

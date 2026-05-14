@@ -11,7 +11,7 @@ const api = {
     if (db) return true;
     
     try {
-      sqlite3 = await sqlite3InitModule({
+      sqlite3 = await (sqlite3InitModule as any)({
         locateFile: (file: string) => file === 'sqlite3.wasm' ? wasmUrl : file,
       });
 
@@ -122,6 +122,27 @@ const api = {
   async setVersion(version: number): Promise<void> {
     if (!db) throw new Error("DB not initialized");
     db.exec(`PRAGMA user_version = ${version};`);
+  },
+
+  async exportDatabase(): Promise<Uint8Array> {
+    if (!db || !sqlite3) throw new Error('DB not initialized');
+    return sqlite3.capi.sqlite3_js_db_export(db);
+  },
+
+  async importDatabase(data: Uint8Array): Promise<void> {
+    if (!db || !sqlite3) throw new Error('DB not initialized');
+    const p = sqlite3.wasm.allocFromTypedArray(data);
+    const rc = sqlite3.capi.sqlite3_deserialize(
+      db.pointer,
+      'main',
+      p,
+      data.byteLength,
+      data.byteLength,
+      sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE | sqlite3.capi.SQLITE_DESERIALIZE_RESIZEABLE
+    );
+    if (rc !== 0) {
+      throw new Error(`Failed to deserialize database, code: ${rc}`);
+    }
   }
 };
 

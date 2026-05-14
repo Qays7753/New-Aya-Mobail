@@ -13,13 +13,60 @@ export default defineConfig(({mode}) => {
       VitePWA({
         registerType: 'prompt',
         manifest: {
-          name: 'POS System',
-          short_name: 'POS',
-          description: 'Offline POS System',
+          name: 'نظام إدارة المتاجر',
+          short_name: 'نقطة البيع',
+          description: 'نظام نقطة بيع متكامل يعمل بدون إنترنت',
           theme_color: '#F9F8F5',
+          background_color: '#F9F8F5',
+          display: 'standalone',
+          orientation: 'portrait',
+          icons: [
+            {
+              src: '/pwa-192x192.png',
+              sizes: '192x192',
+              type: 'image/png'
+            },
+            {
+              src: '/pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any maskable'
+            }
+          ]
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,wasm}'],
+          maximumFileSizeToCacheInBytes: 5000000,
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365
+                },
+                cacheableResponse: {
+                  statuses: [0, 200]
+                }
+              }
+            },
+            {
+              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'gstatic-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365
+                },
+                cacheableResponse: {
+                  statuses: [0, 200]
+                }
+              }
+            }
+          ]
         }
       })
     ],

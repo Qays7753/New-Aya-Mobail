@@ -1,15 +1,27 @@
 import { useState } from 'react';
 import { useCartStore, CartItem } from '@/stores/cart.store';
+import { useSavedCartsStore } from '@/stores/savedCarts.store';
 import { formatMoney } from '@/lib/money';
-import { Plus, Minus, Trash2 } from 'lucide-react';
+import { Plus, Minus, Trash2, ShoppingCart as ShoppingCartIcon, Save, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PaymentDialog, SuccessDialog } from './PaymentDialog';
+import { SavedCartsPanel } from './SavedCartsPanel';
+import { Dialog } from '@/components/ui/Dialog';
+import { toast } from 'sonner';
 
 export function CartSidebar() {
   const { items, removeItem, updateQuantity, clearCart, getSubtotal, getTotalDiscount, getTotal } = useCartStore();
+  const { savedCarts, saveCart } = useSavedCartsStore();
+  const cartStore = useCartStore(); // to pass to restoring if needed
+  
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
-  const [successData, setSuccessData] = useState<{ isOpen: boolean; invoiceNumber: string; change: number }>({
+  const [isSavedCartsOpen, setIsSavedCartsOpen] = useState(false);
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [cartNameInput, setCartNameInput] = useState('');
+  
+  const [successData, setSuccessData] = useState<{ isOpen: boolean; invoiceId: string; invoiceNumber: string; change: number }>({
     isOpen: false,
+    invoiceId: '',
     invoiceNumber: '',
     change: 0
   });
@@ -18,24 +30,67 @@ export function CartSidebar() {
     if (items.length === 0) return;
     setIsPaymentOpen(true);
   };
+  
+  const handleSaveCart = () => {
+    if (!cartNameInput.trim()) {
+      toast.error('يرجى إدخال اسم للسلة');
+      return;
+    }
+    const res = saveCart(cartNameInput, cartStore.items, cartStore.globalDiscountType, cartStore.globalDiscountValue);
+    if (res.success) {
+      toast.success('تم حفظ السلة بنجاح');
+      clearCart();
+      setIsSaveDialogOpen(false);
+      setCartNameInput('');
+    } else {
+      toast.error(res.error || 'فشل حفظ السلة');
+    }
+  };
 
   return (
     <>
+      <SavedCartsPanel isOpen={isSavedCartsOpen} onClose={() => setIsSavedCartsOpen(false)} />
+      
       <div className="w-full h-full bg-surface border-s border-border flex flex-col pt-4 pb-0">
         <div className="px-4 pb-4 border-b border-border flex items-center justify-between shrink-0">
           <h2 className="text-xl font-bold flex items-center gap-2">
             السلة <span className="bg-accent text-white text-sm px-2 py-0.5 rounded-full">{items.length}</span>
           </h2>
-          {items.length > 0 && (
+          <div className="flex gap-2">
             <button 
-              onClick={() => {
-                if (window.confirm('هل أنت متأكد من مسح السلة؟')) clearCart();
-              }}
-              className="text-danger text-sm hover:underline"
+              onClick={() => setIsSavedCartsOpen(true)}
+              className="p-2 text-text-secondary hover:text-accent hover:bg-accent/10 rounded-full transition-colors relative"
             >
-              مسح السلة
+              <Clock className="w-5 h-5" />
+              {savedCarts.length > 0 && <span className="absolute top-0 end-0 bg-accent text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full leading-none">{savedCarts.length}</span>}
             </button>
-          )}
+            {items.length > 0 && (
+              <button 
+                onClick={() => {
+                  if (savedCarts.length >= 3) {
+                    toast.error('تم الوصول للحد الأقصى (3 سلات)');
+                    return;
+                  }
+                  setCartNameInput(`سلة ${new Date().toLocaleTimeString('ar-IQ', {hour: '2-digit', minute:'2-digit'})}`);
+                  setIsSaveDialogOpen(true);
+                }}
+                className="p-2 text-text-secondary hover:text-accent hover:bg-accent/10 rounded-full transition-colors"
+                title="حفظ السلة مؤقتاً"
+              >
+                <Save className="w-5 h-5" />
+              </button>
+            )}
+            {items.length > 0 && (
+              <button 
+                onClick={() => {
+                  if (window.confirm('هل أنت متأكد من مسح السلة؟')) clearCart();
+                }}
+                className="p-2 text-danger hover:bg-danger/10 rounded-full transition-colors"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
@@ -114,12 +169,13 @@ export function CartSidebar() {
         onClose={() => setIsPaymentOpen(false)}
         onSuccess={(id, number, change) => {
           setIsPaymentOpen(false);
-          setSuccessData({ isOpen: true, invoiceNumber: number, change });
+          setSuccessData({ isOpen: true, invoiceId: id, invoiceNumber: number, change });
         }}
       />
 
       <SuccessDialog
         isOpen={successData.isOpen}
+        invoiceId={successData.invoiceId}
         invoiceNumber={successData.invoiceNumber}
         change={successData.change}
         onClose={() => setSuccessData({ ...successData, isOpen: false })}
@@ -128,27 +184,31 @@ export function CartSidebar() {
           clearCart();
         }}
       />
+      {/* Save Cart Dialog */}
+      <Dialog isOpen={isSaveDialogOpen} onClose={() => setIsSaveDialogOpen(false)} title="حفظ السلة مؤقتاً">
+        <label className="block text-sm font-medium mb-1">اسم السلة</label>
+        <input 
+          type="text" 
+          value={cartNameInput}
+          onChange={(e) => setCartNameInput(e.target.value)}
+          maxLength={30}
+          className="w-full h-11 px-3 rounded-xl border border-border focus:border-accent bg-background outline-none mb-6"
+        />
+        <div className="flex gap-3">
+          <button 
+            onClick={handleSaveCart}
+            className="flex-1 h-11 bg-accent text-white font-bold rounded-lg"
+          >
+            حفظ
+          </button>
+          <button 
+            onClick={() => setIsSaveDialogOpen(false)}
+            className="flex-1 h-11 bg-surface border border-border rounded-lg"
+          >
+            إلغاء
+          </button>
+        </div>
+      </Dialog>
     </>
-  );
-}
-
-function ShoppingCartIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="8" cy="21" r="1" />
-      <circle cx="19" cy="21" r="1" />
-      <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
-    </svg>
   );
 }

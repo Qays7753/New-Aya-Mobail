@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { nanoid } from 'nanoid';
 import { Product } from '@/db/queries/products';
 import { addMoney, subMoney, mulMoney, applyPercent } from '@/lib/money';
 
@@ -60,7 +61,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     }
     
     const newItem: CartItem = {
-      cartItemId: Math.random().toString(36).substring(7),
+      cartItemId: nanoid(),
       product,
       quantity: 1,
       discountType: 'amount',

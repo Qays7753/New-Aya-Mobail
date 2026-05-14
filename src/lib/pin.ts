@@ -1,10 +1,17 @@
 import { get, set } from 'idb-keyval';
 
 const PIN_STORE_KEY = 'admin_pin';
+const LOCKOUT_KEY = 'pin_lockout';
 
 export interface StoredPin {
   hash: string;
   salt: string;
+  isDefault: boolean;
+}
+
+export interface LockoutState {
+  failedAttempts: number;
+  lockoutUntil: number; // timestamp ms
 }
 
 // Convert ArrayBuffer to Hex String
@@ -43,13 +50,14 @@ async function deriveKey(pin: string, salt: Uint8Array): Promise<ArrayBuffer> {
   );
 }
 
-export async function hashPin(pin: string): Promise<StoredPin> {
+export async function hashPin(pin: string, isDefault = false): Promise<StoredPin> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const derivedBits = await deriveKey(pin, salt);
   
   return {
     hash: bufferToHex(derivedBits),
     salt: bufferToHex(salt.buffer),
+    isDefault
   };
 }
 
@@ -61,22 +69,60 @@ export async function verifyPin(pin: string, stored: StoredPin): Promise<boolean
   return hash === stored.hash;
 }
 
-export async function savePin(pin: string): Promise<void> {
-  const hashed = await hashPin(pin);
+export async function savePin(pin: string, isDefault = false): Promise<void> {
+  const hashed = await hashPin(pin, isDefault);
   await set(PIN_STORE_KEY, hashed);
 }
 
-export async function checkPin(pin: string): Promise<boolean> {
-  const stored = await get<StoredPin>(PIN_STORE_KEY);
-  if (!stored) {
-    // If no PIN exists, default is 1234
-    const defaultHash = await hashPin('1234');
-    return verifyPin(pin, defaultHash);
+export async function checkPin(pin: string): Promise<{ success: boolean; lockoutUntil?: number; isDefault?: boolean }> {
+  // Check lockout
+  const lockoutState = await get<LockoutState>(LOCKOUT_KEY) || { failedAttempts: 0, lockoutUntil: 0 };
+  const now = Date.now();
+  
+  if (lockoutState.lockoutUntil > now) {
+    return { success: false, lockoutUntil: lockoutState.lockoutUntil };
   }
-  return verifyPin(pin, stored);
+
+  // Bootstrap if needed
+  let stored = await get<StoredPin>(PIN_STORE_KEY);
+  if (!stored) {
+    await savePin('1234', true);
+    stored = await get<StoredPin>(PIN_STORE_KEY);
+  }
+
+  const isValid = await verifyPin(pin, stored!);
+  
+  if (isValid) {
+    // Reset lockout
+    if (lockoutState.failedAttempts > 0) {
+      await set(LOCKOUT_KEY, { failedAttempts: 0, lockoutUntil: 0 });
+    }
+    return { success: true, isDefault: stored!.isDefault };
+  } else {
+    // Increment attempts
+    lockoutState.failedAttempts++;
+    if (lockoutState.failedAttempts >= 5) {
+      // 5 minutes lockout
+      lockoutState.lockoutUntil = now + (5 * 60 * 1000);
+      lockoutState.failedAttempts = 0; // reset for after lockout
+    }
+    await set(LOCKOUT_KEY, lockoutState);
+    return { success: false, lockoutUntil: lockoutState.lockoutUntil > now ? lockoutState.lockoutUntil : undefined };
+  }
 }
 
 export async function isPinSet(): Promise<boolean> {
   const stored = await get<StoredPin>(PIN_STORE_KEY);
-  return !!stored;
+  return !!stored && !stored.isDefault;
+}
+
+export async function requiresDefaultChange(): Promise<boolean> {
+  const stored = await get<StoredPin>(PIN_STORE_KEY);
+  // If not stored, we will bootstrap it on first check. But we return true because it needs change.
+  if (!stored) return true;
+  return !!stored.isDefault;
+}
+
+export async function getLockoutState(): Promise<LockoutState> {
+  return await get<LockoutState>(LOCKOUT_KEY) || { failedAttempts: 0, lockoutUntil: 0 };
 }

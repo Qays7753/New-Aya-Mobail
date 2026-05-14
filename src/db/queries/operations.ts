@@ -1,5 +1,6 @@
 import { dbClient } from '../client';
 import { format } from 'date-fns';
+import { nanoid } from 'nanoid';
 
 export interface LedgerEntry {
   id: string;
@@ -8,7 +9,7 @@ export interface LedgerEntry {
   account_name: string;
   type: 'debit' | 'credit';
   amount: number;
-  ref_type: 'invoice' | 'expense' | 'purchase' | 'transfer' | 'manual';
+  ref_type: 'invoice' | 'expense' | 'topup' | 'transfer' | 'manual' | 'reconciliation' | 'maintenance';
   ref_id: string | null;
   description: string;
   created_at: string;
@@ -74,3 +75,111 @@ export async function getDailySummary(dateString?: string) {
     netProfit: sales - expenses // Simplistic profit
   };
 }
+
+export async function createTopup({
+  account_id,
+  supplier_id,
+  amount,
+  cost,
+  profit,
+  notes
+}: {
+  account_id: string;
+  supplier_id?: string;
+  amount: number;
+  cost: number;
+  profit: number;
+  notes?: string;
+}) {
+  const now = new Date();
+  const dateStr = format(now, 'yyyy-MM-dd');
+  const timestamp = now.toISOString();
+  
+  let nextVal = 1;
+  const seqResult = await dbClient.query("SELECT last_val FROM sequences WHERE name = 'topup'");
+  if (seqResult.length > 0) nextVal = seqResult[0].last_val + 1;
+  
+  const topupNumber = `TOP-${format(now, 'yyMM')}-${nextVal.toString().padStart(4, '0')}`;
+  const topupId = nanoid();
+
+  const tx = [
+    {
+      sql: "UPDATE sequences SET last_val = ? WHERE name = 'topup'",
+      params: [nextVal]
+    },
+    {
+      sql: `INSERT INTO topups (id, topup_number, topup_date, account_id, supplier_id, amount, cost, profit, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [topupId, topupNumber, dateStr, account_id, supplier_id || null, amount, cost, profit, notes || null, timestamp]
+    },
+    {
+      sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
+      params: [cost, account_id]
+    },
+    {
+      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [nanoid(), dateStr, account_id, 'credit', cost, 'topup', topupId, `شحن رصيد: ${topupNumber}`, timestamp]
+    }
+  ];
+
+  await dbClient.batchRun(tx);
+  return { id: topupId, topupNumber };
+}
+
+export async function createTransfer({
+  from_account_id,
+  to_account_id,
+  amount,
+  notes
+}: {
+  from_account_id: string;
+  to_account_id: string;
+  amount: number;
+  notes?: string;
+}) {
+  const now = new Date();
+  const dateStr = format(now, 'yyyy-MM-dd');
+  const timestamp = now.toISOString();
+
+  let nextVal = 1;
+  const seqResult = await dbClient.query("SELECT last_val FROM sequences WHERE name = 'transfer'");
+  if (seqResult.length > 0) nextVal = seqResult[0].last_val + 1;
+  
+  const transferNumber = `TRF-${format(now, 'yyMM')}-${nextVal.toString().padStart(4, '0')}`;
+  const transferId = nanoid();
+
+  const tx = [
+    {
+      sql: "UPDATE sequences SET last_val = ? WHERE name = 'transfer'",
+      params: [nextVal]
+    },
+    {
+      sql: `INSERT INTO transfers (id, transfer_number, transfer_date, from_account_id, to_account_id, amount, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [transferId, transferNumber, dateStr, from_account_id, to_account_id, amount, notes || null, timestamp]
+    },
+    {
+      sql: `UPDATE accounts SET balance = balance - ? WHERE id = ?`,
+      params: [amount, from_account_id]
+    },
+    {
+      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [nanoid(), dateStr, from_account_id, 'debit', amount, 'transfer', transferId, `تحويل صادر: ${transferNumber}`, timestamp]
+    },
+    {
+      sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
+      params: [amount, to_account_id]
+    },
+    {
+      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [nanoid(), dateStr, to_account_id, 'credit', amount, 'transfer', transferId, `تحويل وارد: ${transferNumber}`, timestamp]
+    }
+  ];
+
+  await dbClient.batchRun(tx);
+  return { id: transferId, transferNumber };
+}
+

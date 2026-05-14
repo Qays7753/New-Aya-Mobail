@@ -40,6 +40,16 @@
     font-size: 14px;
     line-height: 1.6;
     --color-accent-ring:    rgba(207, 105, 74, 0.18);
+    --btn-height: 44px;
+    --input-height: 44px;
+    --height-topbar: 56px;
+    --height-bottombar: 60px;
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-6: 24px;
+    --sp-8: 32px;
   }
 
   body {

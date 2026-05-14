@@ -1,60 +1,96 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getJobs, addJob, updateJobStatus, MaintenanceJob } from '@/db/queries/maintenance';
-import { Wrench, Plus, CheckCircle, PackageCheck, Phone, X } from 'lucide-react';
+import { getActiveAccounts } from '@/db/queries/accounts';
+import { useAuth } from '@/contexts/AuthContext';
+import { Wrench, Plus, CheckCircle, PackageCheck, Phone, X, Search } from 'lucide-react';
 import { formatMoney, parseMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 const STATUS_MAP = {
-  received: { label: 'قيد الاستلام', color: 'bg-muted text-text-secondary' },
+  new: { label: 'قيد الاستلام', color: 'bg-muted text-text-secondary' },
   in_progress: { label: 'جاري الصيانة', color: 'bg-warning-bg text-warning' },
-  completed: { label: 'تمت الصيانة', color: 'bg-success-bg text-success' },
+  ready: { label: 'تمت الصيانة (جاهز)', color: 'bg-success-bg text-success' },
   delivered: { label: 'سُلم للعميل', color: 'bg-accent/10 text-accent' },
+  cancelled: { label: 'ملغي', color: 'bg-danger/10 text-danger' },
 };
 
 export default function MaintenancePage() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState('all');
+  const [keyword, setKeyword] = useState('');
   const [isAddMode, setIsAddMode] = useState(false);
   
+  // Delivery Dialog state
+  const [deliveryJobId, setDeliveryJobId] = useState<string | null>(null);
+  const [finalAmount, setFinalAmount] = useState('');
+  const [paymentAccountId, setPaymentAccountId] = useState('');
+
+  // Cancel PIN state
+  const { requireAdminAction } = useAuth();
+  
   const [formData, setFormData] = useState({
+    job_date: new Date().toISOString().split('T')[0],
     customer_name: '',
     customer_phone: '',
-    device_model: '',
+    device_type: '',
     issue_description: '',
-    expected_cost: '',
+    estimated_cost: '',
     notes: ''
   });
 
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['active-accounts'],
+    queryFn: getActiveAccounts,
+  });
+
   const { data: jobs = [], isLoading } = useQuery({
-    queryKey: ['maintenance', filter],
-    queryFn: () => getJobs(filter)
+    queryKey: ['maintenance', filter, keyword],
+    queryFn: () => getJobs(filter, keyword)
   });
 
   const saveMutation = useMutation({
     mutationFn: () => addJob({
       ...formData,
-      expected_cost: parseMoney(formData.expected_cost)
+      estimated_cost: parseMoney(formData.estimated_cost)
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['maintenance'] });
       toast.success('تم استلام الجهاز بنجاح');
       setIsAddMode(false);
       setFormData({
-        customer_name: '', customer_phone: '', device_model: '', 
-        issue_description: '', expected_cost: '', notes: ''
+        job_date: new Date().toISOString().split('T')[0],
+        customer_name: '', customer_phone: '', device_type: '', 
+        issue_description: '', estimated_cost: '', notes: ''
       });
     }
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string, status: MaintenanceJob['status'] }) => updateJobStatus(id, status),
+    mutationFn: ({ id, status, finalAmount, accountId }: { id: string, status: MaintenanceJob['status'], finalAmount?: number, accountId?: string }) => updateJobStatus(id, status, finalAmount, accountId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['maintenance'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['ledger-entries'] });
       toast.success('تم تحديث حالة الجهاز');
+      setDeliveryJobId(null);
+    },
+    onError: (err: any) => {
+      toast.error('حدث خطأ أثناء التحديث: ' + err.message);
     }
   });
+
+  const handleDeliverySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deliveryJobId || !paymentAccountId) return;
+    updateStatusMutation.mutate({
+        id: deliveryJobId, 
+        status: 'delivered', 
+        finalAmount: parseMoney(finalAmount), 
+        accountId: paymentAccountId
+    });
+  };
 
   return (
     <div className="flex flex-col h-full bg-background relative isolate">
@@ -73,19 +109,32 @@ export default function MaintenancePage() {
             </button>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
-            {['all', 'received', 'in_progress', 'completed', 'delivered'].map((s) => (
-              <button
-                key={s}
-                onClick={() => setFilter(s)}
-                className={cn(
-                  "px-4 h-10 rounded-xl whitespace-nowrap font-medium transition-colors border shadow-sm",
-                  filter === s ? "bg-text-primary text-white border-transparent" : "bg-surface border-border text-text-secondary hover:border-accent"
-                )}
-              >
-                {s === 'all' ? 'الكل' : STATUS_MAP[s as keyof typeof STATUS_MAP].label}
-              </button>
-            ))}
+          <div className="flex flex-col sm:flex-row gap-4 justify-between">
+            <div className="relative max-w-sm flex-1">
+              <Search className="w-5 h-5 absolute end-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+              <input 
+                type="text" 
+                placeholder="بحث برقم الوصل، اسم العميل، نوع الجهاز..." 
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                className="w-full h-11 ps-4 pe-10 rounded-xl border border-border bg-background focus:border-accent outline-none"
+              />
+            </div>
+            
+            <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+              {['all', 'new', 'in_progress', 'ready', 'delivered', 'cancelled'].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setFilter(s)}
+                  className={cn(
+                    "px-4 h-11 rounded-xl whitespace-nowrap font-medium transition-colors border shadow-sm",
+                    filter === s ? "bg-text-primary text-white border-transparent" : "bg-surface border-border text-text-secondary hover:border-accent"
+                  )}
+                >
+                  {s === 'all' ? 'الكل' : STATUS_MAP[s as keyof typeof STATUS_MAP].label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </header>
@@ -111,14 +160,14 @@ export default function MaintenancePage() {
                           {STATUS_MAP[job.status].label}
                         </span>
                       </div>
-                      <h3 className="font-bold text-lg">{job.device_model}</h3>
+                      <h3 className="font-bold text-lg">{job.device_type}</h3>
                     </div>
-                    {job.expected_cost && job.expected_cost > 0 && (
-                      <div className="text-left">
+                    {(job.estimated_cost && job.estimated_cost > 0) ? (
+                      <div className="text-end">
                         <div className="text-xs text-text-secondary">التكلفة التقريبية</div>
-                        <div className="font-bold numeric text-accent">{formatMoney(job.expected_cost)}</div>
+                        <div className="font-bold numeric text-accent">{formatMoney(job.estimated_cost)}</div>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                   
                   <div className="bg-muted/50 p-3 rounded-xl text-sm space-y-1">
@@ -134,7 +183,7 @@ export default function MaintenancePage() {
                     </div>
 
                     <div className="flex gap-2">
-                      {job.status === 'received' && (
+                      {job.status === 'new' && (
                         <button 
                           onClick={() => updateStatusMutation.mutate({ id: job.id, status: 'in_progress' })}
                           className="px-3 py-1.5 bg-warning-bg text-warning rounded-lg font-bold text-xs"
@@ -144,18 +193,33 @@ export default function MaintenancePage() {
                       )}
                       {job.status === 'in_progress' && (
                         <button 
-                          onClick={() => updateStatusMutation.mutate({ id: job.id, status: 'completed' })}
+                          onClick={() => updateStatusMutation.mutate({ id: job.id, status: 'ready' })}
                           className="px-3 py-1.5 bg-success-bg text-success rounded-lg font-bold text-xs flex items-center gap-1"
                         >
                           <CheckCircle className="w-3 h-3" /> تم الإنجاز
                         </button>
                       )}
-                      {job.status === 'completed' && (
+                      {job.status === 'ready' && (
                         <button 
-                          onClick={() => updateStatusMutation.mutate({ id: job.id, status: 'delivered' })}
+                          onClick={() => {
+                              setDeliveryJobId(job.id);
+                              setFinalAmount(job.estimated_cost ? (job.estimated_cost).toString() : '');
+                          }}
                           className="px-3 py-1.5 bg-accent text-white rounded-lg font-bold text-xs flex items-center gap-1"
                         >
                           <PackageCheck className="w-3 h-3" /> تسليم للعميل
+                        </button>
+                      )}
+                      {job.status === 'new' && (
+                        <button 
+                          onClick={() => {
+                            requireAdminAction(() => {
+                               updateStatusMutation.mutate({ id: job.id, status: 'cancelled' });
+                            });
+                          }}
+                          className="px-3 py-1.5 bg-danger/10 text-danger rounded-lg font-bold text-xs flex items-center gap-1"
+                        >
+                          إلغاء
                         </button>
                       )}
                     </div>
@@ -166,6 +230,57 @@ export default function MaintenancePage() {
           )}
         </div>
       </main>
+
+      {/* Delivery Dialog */}
+      {deliveryJobId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="bg-surface w-full max-w-sm rounded-2xl shadow-xl flex flex-col overflow-hidden">
+                <div className="flex justify-between items-center p-4 border-b border-border bg-muted/30">
+                    <h2 className="text-xl font-bold">تسليم الجهاز</h2>
+                    <button onClick={() => setDeliveryJobId(null)} className="p-2 hover:bg-muted rounded-full text-text-secondary hover:text-text-primary">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+                <form onSubmit={handleDeliverySubmit} className="p-4 space-y-4">
+                    <div className="space-y-1.5">
+                        <label className="text-sm font-medium">المبلغ النهائي المدفوع <span className="text-danger">*</span></label>
+                        <input 
+                            type="number" 
+                            step="any"
+                            min="0"
+                            required
+                            value={finalAmount}
+                            onChange={(e) => setFinalAmount(e.target.value)}
+                            className="w-full h-[var(--input-height)] px-3 rounded-lg border border-border focus:border-accent outline-none bg-background numeric font-bold"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-sm font-medium">إيداع إلى حساب <span className="text-danger">*</span></label>
+                        <select
+                            value={paymentAccountId}
+                            onChange={e => setPaymentAccountId(e.target.value)}
+                            className="w-full h-[var(--input-height)] bg-surface border border-border rounded-lg px-3 outline-none focus:border-accent font-medium"
+                            required
+                        >
+                            <option value="">-- اختر الحساب --</option>
+                            {accounts.map(acc => (
+                                <option key={acc.id} value={acc.id}>{acc.name} ({formatMoney(acc.balance)})</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={updateStatusMutation.isPending || !finalAmount || !paymentAccountId}
+                        className="w-full h-[var(--btn-height)] bg-accent text-white font-bold rounded-lg disabled:opacity-50 hover:bg-accent-hover transition-colors shadow-sm flex items-center justify-center gap-2 mt-2"
+                    >
+                        <CheckCircle className="w-5 h-5" />
+                        تأكيد وحفظ
+                    </button>
+                </form>
+            </div>
+          </div>
+      )}
 
       {/* Add Job Dialog */}
       {isAddMode && (
@@ -178,7 +293,7 @@ export default function MaintenancePage() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+            <div className="flex-1 overflow-y-auto pe-2 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">اسم العميل <span className="text-danger">*</span></label>
@@ -195,7 +310,7 @@ export default function MaintenancePage() {
                     type="tel" 
                     value={formData.customer_phone}
                     onChange={e => setFormData({...formData, customer_phone: e.target.value})}
-                    className="w-full h-11 px-3 rounded-lg border border-border focus:border-accent outline-none bg-background numeric dir-ltr text-right"
+                    className="w-full h-11 px-3 rounded-lg border border-border focus:border-accent outline-none bg-background numeric dir-ltr text-end"
                   />
                 </div>
               </div>
@@ -204,8 +319,8 @@ export default function MaintenancePage() {
                 <label className="block text-sm font-medium mb-1">نوع وموديل الجهاز <span className="text-danger">*</span></label>
                 <input 
                   type="text" 
-                  value={formData.device_model}
-                  onChange={e => setFormData({...formData, device_model: e.target.value})}
+                  value={formData.device_type}
+                  onChange={e => setFormData({...formData, device_type: e.target.value})}
                   className="w-full h-11 px-3 rounded-lg border border-border focus:border-accent outline-none bg-background"
                   placeholder="iPhone 13 Pro Max"
                 />
@@ -228,11 +343,11 @@ export default function MaintenancePage() {
                     <input 
                       type="text" 
                       inputMode="decimal"
-                      value={formData.expected_cost}
-                      onChange={e => setFormData({...formData, expected_cost: e.target.value})}
-                      className="w-full h-11 pl-10 pr-3 rounded-lg border border-border focus:border-accent outline-none numeric font-bold bg-background"
+                      value={formData.estimated_cost}
+                      onChange={e => setFormData({...formData, estimated_cost: e.target.value})}
+                      className="w-full h-11 ps-10 pe-3 rounded-lg border border-border focus:border-accent outline-none numeric font-bold bg-background"
                     />
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">د.ع</span>
+                    <span className="absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">د.ع</span>
                   </div>
                 </div>
               </div>
@@ -252,7 +367,7 @@ export default function MaintenancePage() {
             <div className="pt-4 border-t border-border shrink-0 mt-4">
               <button
                 onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || !formData.customer_name || !formData.device_model || !formData.issue_description}
+                disabled={saveMutation.isPending || !formData.customer_name || !formData.device_type || !formData.issue_description}
                 className="w-full h-[var(--btn-height)] bg-accent text-white font-bold rounded-lg disabled:opacity-50 hover:bg-accent-hover transition-colors shadow-sm"
               >
                 تأكيد الاستلام

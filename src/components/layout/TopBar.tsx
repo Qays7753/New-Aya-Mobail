@@ -1,9 +1,8 @@
 import { Settings } from 'lucide-react';
 import { format } from 'date-fns';
-import { ar } from 'date-fns/locale';
 
 export function TopBar() {
-  const today = format(new Date(), 'EEEE، d MMMM', { locale: ar });
+  const today = format(new Date(), 'dd/MM/yyyy');
   return (
     <header className="h-[56px] border-b border-border bg-surface flex items-center justify-between px-4 sticky top-0 z-10 shrink-0">
       <div className="flex items-center gap-2">

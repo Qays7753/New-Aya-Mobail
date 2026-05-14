@@ -1,7 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { Home, ShoppingCart, Package, DollarSign, ArrowRightLeft, Wrench, BarChart2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useUiStore } from '@/stores/ui.store';
 
 const navItems = [
   { path: '/dashboard', icon: Home, label: 'الرئيسية', requiresPin: true },

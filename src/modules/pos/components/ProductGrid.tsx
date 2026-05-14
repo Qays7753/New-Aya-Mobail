@@ -35,6 +35,34 @@ export function ProductGrid() {
     staleTime: Infinity,
   });
 
+  const parentRef = useRef<HTMLDivElement>(null);
+  
+  // Calculate columns based on width
+  const [columns, setColumns] = useState(2);
+  
+  useEffect(() => {
+    if (!parentRef.current) return;
+    const observer = new ResizeObserver(entries => {
+      for (let entry of entries) {
+        const width = entry.contentRect.width;
+        if (width >= 1024) setColumns(4); // lg
+        else if (width >= 640) setColumns(3); // sm
+        else setColumns(2);
+      }
+    });
+    observer.observe(parentRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const rowCount = Math.ceil((products?.length || 0) / columns);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 180, // estimated height of card + gap
+    overscan: 5,
+  });
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Filters Header */}
@@ -69,19 +97,50 @@ export function ProductGrid() {
       </div>
 
       {/* Grid */}
-      <div className="flex-1 overflow-y-auto p-4 content-start grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 pb-24 lg:pb-4">
+      <div ref={parentRef} className="flex-1 overflow-y-auto p-4 content-start pb-24 lg:pb-4">
         {isLoading ? (
-          <div className="col-span-full flex justify-center py-8">
+          <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
           </div>
         ) : products.length === 0 ? (
-           <div className="col-span-full text-center py-12 text-text-secondary">
+           <div className="text-center py-12 text-text-secondary">
              لا توجد منتجات مطابقة.
            </div>
         ) : (
-          products.map((product) => (
-            <ProductCard key={product.id} product={product} onAdd={() => addItem(product)} />
-          ))
+          <div
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const startIndex = virtualRow.index * columns;
+              const rowProducts = products.slice(startIndex, startIndex + columns);
+
+              return (
+                <div
+                  key={virtualRow.key}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                    paddingBottom: '16px', // gap substitute
+                  }}
+                  className="flex gap-4"
+                >
+                  {rowProducts.map(product => (
+                    <div key={product.id} style={{ width: `${100 / columns}%` }} className="h-full">
+                      <ProductCard product={product} onAdd={() => addItem(product)} />
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
@@ -96,7 +155,7 @@ function ProductCard({ product, onAdd, key }: { product: Product; onAdd: () => v
     <div 
       onClick={() => { if (!isOutOfStock) onAdd() }}
       className={cn(
-        "bg-surface border border-border rounded-xl p-3 flex flex-col justify-between transition-all select-none group aspect-square",
+        "bg-surface border border-border rounded-xl p-3 flex flex-col justify-between transition-all select-none group h-[164px]",
         isOutOfStock ? "opacity-60 grayscale cursor-not-allowed" : "cursor-pointer hover:border-accent active:scale-[0.98]" // added border on hover
       )}
     >
