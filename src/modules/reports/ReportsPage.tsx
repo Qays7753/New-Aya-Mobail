@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getComprehensiveMonthlyReport } from '@/db/queries/reports';
 import { formatMoney } from '@/lib/money';
@@ -6,28 +6,23 @@ import { BarChart3, TrendingUp, TrendingDown, Receipt, Calendar, Download, PieCh
 import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import * as XLSX from 'xlsx';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend
-} from 'recharts';
+
+const ReactECharts = lazy(() => import('echarts-for-react'));
 
 type Tab = 'overview' | 'sales' | 'expenses' | 'products';
 
 const COLORS = ['#CF694A', '#D4AF37', '#2A3F54', '#5CB85C', '#5BC0DE', '#F0AD4E', '#D9534F'];
 
+const ChartLoader = () => (
+  <div className="h-full flex items-center justify-center">
+    <div className="animate-spin w-8 h-8 border-4 border-accent/30 border-t-accent rounded-full" />
+  </div>
+);
+
 export default function ReportsPage() {
-  const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
   const [activeTab, setActiveTab] = useState<Tab>('overview');
-  
+
   const { data: report, isLoading } = useQuery({
     queryKey: ['monthly-report-comprehensive', currentMonth],
     queryFn: () => getComprehensiveMonthlyReport(new Date(currentMonth + '-01'))
@@ -35,10 +30,9 @@ export default function ReportsPage() {
 
   const handleExportExcel = () => {
     if (!report) return;
-    
+
     const wb = XLSX.utils.book_new();
 
-    // 1. Daily Summary
     const dailyWS = XLSX.utils.json_to_sheet(report.dailyReport.map(d => ({
       'التاريخ': d.date,
       'المبيعات': d.sales,
@@ -49,14 +43,12 @@ export default function ReportsPage() {
     })));
     XLSX.utils.book_append_sheet(wb, dailyWS, "الملخص اليومي");
 
-    // 2. Sales By Category
     const salesCatWS = XLSX.utils.json_to_sheet(report.salesByCategory.map(c => ({
       'الفئة': c.category || 'غير مصنف',
       'إجمالي المبيعات': c.total
     })));
     XLSX.utils.book_append_sheet(wb, salesCatWS, "المبيعات حسب الفئة");
 
-    // 3. Top Products
     const topProdWS = XLSX.utils.json_to_sheet(report.topProducts.map(p => ({
       'المنتج': p.name,
       'الكمية المباعة': p.qty,
@@ -64,7 +56,6 @@ export default function ReportsPage() {
     })));
     XLSX.utils.book_append_sheet(wb, topProdWS, "المنتجات الأكثر مبيعاً");
 
-    // 4. Expenses By Category
     const expCatWS = XLSX.utils.json_to_sheet(report.expensesByCategory.map(e => ({
       'الفئة': e.category || 'غير مصنف',
       'إجمالي المصروفات': e.total
@@ -73,6 +64,104 @@ export default function ReportsPage() {
 
     XLSX.writeFile(wb, `تقرير_${currentMonth}.xlsx`);
   };
+
+  const overviewBarOption = report ? {
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any[]) =>
+        params.map(p => `${p.marker}${p.seriesName}: ${formatMoney(p.value)}`).join('<br/>'),
+      textStyle: { fontFamily: 'Tajawal, sans-serif' }
+    },
+    legend: { data: ['المبيعات', 'المصروفات'], bottom: 0 },
+    grid: { top: 10, right: 10, left: 10, bottom: 40, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: report.dailyReport.slice().reverse().map(d => format(parseISO(d.date), 'dd')),
+      axisLabel: { fontSize: 12 }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { formatter: (val: number) => `${val / 1000}k`, fontSize: 12 }
+    },
+    series: [
+      {
+        name: 'المبيعات',
+        type: 'bar',
+        data: report.dailyReport.slice().reverse().map(d => d.sales),
+        itemStyle: { color: '#5CB85C', borderRadius: [4, 4, 0, 0] }
+      },
+      {
+        name: 'المصروفات',
+        type: 'bar',
+        data: report.dailyReport.slice().reverse().map(d => d.expenses),
+        itemStyle: { color: '#D9534F', borderRadius: [4, 4, 0, 0] }
+      }
+    ]
+  } : {};
+
+  const salesPieOption = report ? {
+    tooltip: {
+      trigger: 'item',
+      formatter: (p: any) => `${p.name}: ${formatMoney(p.value)} (${p.percent}%)`,
+      textStyle: { fontFamily: 'Tajawal, sans-serif' }
+    },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '70%'],
+      center: ['50%', '50%'],
+      padAngle: 5,
+      data: report.salesByCategory.map((s: any, i: number) => ({
+        name: s.category || 'غير مصنف',
+        value: s.total,
+        itemStyle: { color: COLORS[i % COLORS.length] }
+      })),
+      label: { formatter: '{b} {d}%', fontSize: 12 }
+    }]
+  } : {};
+
+  const expensesPieOption = report ? {
+    tooltip: {
+      trigger: 'item',
+      formatter: (p: any) => `${p.name}: ${formatMoney(p.value)} (${p.percent}%)`,
+      textStyle: { fontFamily: 'Tajawal, sans-serif' }
+    },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '70%'],
+      center: ['50%', '50%'],
+      padAngle: 5,
+      data: report.expensesByCategory.map((e: any, i: number) => ({
+        name: e.category || 'غير مصنف',
+        value: e.total,
+        itemStyle: { color: COLORS[(i + 2) % COLORS.length] }
+      })),
+      label: { formatter: '{b} {d}%', fontSize: 12 }
+    }]
+  } : {};
+
+  const topProductsBarOption = report ? {
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any[]) =>
+        params.map(p => `${p.marker}${p.seriesName}: ${p.value}`).join('<br/>'),
+      textStyle: { fontFamily: 'Tajawal, sans-serif' }
+    },
+    grid: { top: 10, right: 20, left: 10, bottom: 10, containLabel: true },
+    xAxis: { type: 'value', axisLabel: { fontSize: 12 } },
+    yAxis: {
+      type: 'category',
+      data: report.topProducts.map((p: any) => p.name),
+      axisLabel: { fontSize: 12, width: 120, overflow: 'truncate' }
+    },
+    series: [{
+      name: 'الكمية المباعة',
+      type: 'bar',
+      data: report.topProducts.map((p: any, i: number) => ({
+        value: p.qty,
+        itemStyle: { color: COLORS[i % COLORS.length], borderRadius: [0, 4, 4, 0] }
+      }))
+    }]
+  } : {};
 
   return (
     <div className="flex flex-col h-full bg-background relative isolate">
@@ -87,19 +176,19 @@ export default function ReportsPage() {
               <p className="text-sm text-text-secondary">تقارير مفصلة للمبيعات والمصروفات والأرباح</p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 no-scrollbar">
             <div className="bg-muted p-1 px-3 py-1.5 rounded-xl border border-border flex items-center gap-2 font-bold focus-within:border-accent shrink-0">
               <Calendar className="w-4 h-4 text-text-secondary" />
-              <input 
-                type="month" 
+              <input
+                type="month"
                 value={currentMonth}
                 onChange={(e) => setCurrentMonth(e.target.value)}
                 className="bg-transparent border-none outline-none font-medium cursor-pointer flex-1 text-sm dir-ltr"
               />
             </div>
-            
-            <button 
+
+            <button
               onClick={handleExportExcel}
               disabled={!report || isLoading}
               className="h-10 px-4 bg-success text-white font-bold text-sm rounded-xl hover:opacity-90 transition-opacity flex items-center gap-2 shrink-0 disabled:opacity-50"
@@ -126,8 +215,8 @@ export default function ReportsPage() {
                 onClick={() => setActiveTab(tab.id as Tab)}
                 className={cn(
                   "flex items-center gap-2 px-5 py-3 border-b-2 font-medium text-sm whitespace-nowrap transition-colors",
-                  isActive 
-                    ? "border-accent text-accent" 
+                  isActive
+                    ? "border-accent text-accent"
                     : "border-transparent text-text-secondary hover:text-text-primary hover:border-border"
                 )}
               >
@@ -187,21 +276,9 @@ export default function ReportsPage() {
                   <div className="bg-surface border border-border rounded-2xl p-5 shadow-sm">
                     <h3 className="font-bold text-lg mb-6">مخطط الأرباح والمصروفات اليومي</h3>
                     <div className="h-[300px] w-full" dir="ltr">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={report.dailyReport.slice().reverse()} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                          <XAxis dataKey="date" tickFormatter={(val) => format(parseISO(val), 'dd')} tick={{fontSize: 12}} />
-                          <YAxis tick={{fontSize: 12}} tickFormatter={(val) => `${val/1000}k`} />
-                          <Tooltip 
-                            formatter={(value: number) => formatMoney(value)}
-                            labelFormatter={(label) => format(parseISO(label), 'yyyy-MM-dd')}
-                            contentStyle={{ borderRadius: '12px', borderColor: '#E5E7EB', textAlign: 'right' }}
-                          />
-                          <Legend />
-                          <Bar dataKey="sales" name="المبيعات" fill="#5CB85C" radius={[4, 4, 0, 0]} />
-                          <Bar dataKey="expenses" name="المصروفات" fill="#D9534F" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <Suspense fallback={<ChartLoader />}>
+                        <ReactECharts option={overviewBarOption} style={{ height: '100%', width: '100%' }} />
+                      </Suspense>
                     </div>
                   </div>
                 </div>
@@ -217,35 +294,18 @@ export default function ReportsPage() {
                       </h3>
                       <div className="h-[300px] w-full" dir="ltr">
                         {report.salesByCategory.length > 0 ? (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={report.salesByCategory}
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={60}
-                                outerRadius={100}
-                                paddingAngle={5}
-                                dataKey="total"
-                                nameKey="category"
-                                label={({name, percent}) => `${name || 'غير مصنف'} ${(percent * 100).toFixed(0)}%`}
-                              >
-                                {report.salesByCategory.map((entry: any, index: number) => (
-                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                ))}
-                              </Pie>
-                              <Tooltip formatter={(value: number) => formatMoney(value)} />
-                            </PieChart>
-                          </ResponsiveContainer>
+                          <Suspense fallback={<ChartLoader />}>
+                            <ReactECharts option={salesPieOption} style={{ height: '100%', width: '100%' }} />
+                          </Suspense>
                         ) : (
                           <div className="h-full flex items-center justify-center text-text-secondary">لا توجد بيانات مبيعات</div>
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col">
                       <div className="p-5 border-b border-border bg-muted/30">
-                         <h3 className="font-bold text-lg">تفصيل المبيعات حسب الفئة</h3>
+                        <h3 className="font-bold text-lg">تفصيل المبيعات حسب الفئة</h3>
                       </div>
                       <div className="overflow-y-auto max-h-[300px]">
                         <table className="w-full text-sm text-start">
@@ -290,7 +350,6 @@ export default function ReportsPage() {
                           {report.dailyReport.map((day: any) => {
                             const isWeekend = new Date(day.date).getDay() === 5;
                             if (day.sales === 0) return null;
-
                             return (
                               <tr key={day.date} className={cn("hover:bg-muted/30 transition-colors", isWeekend && "bg-danger/5")}>
                                 <td className="px-4 py-3 whitespace-nowrap font-medium text-text-primary">
@@ -319,35 +378,18 @@ export default function ReportsPage() {
                       </h3>
                       <div className="h-[300px] w-full" dir="ltr">
                         {report.expensesByCategory.length > 0 ? (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={report.expensesByCategory}
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={60}
-                                outerRadius={100}
-                                paddingAngle={5}
-                                dataKey="total"
-                                nameKey="category"
-                                label={({name, percent}) => `${name || 'غير مصنف'} ${(percent * 100).toFixed(0)}%`}
-                              >
-                                {report.expensesByCategory.map((entry: any, index: number) => (
-                                  <Cell key={`cell-${index}`} fill={COLORS[(index+2) % COLORS.length]} />
-                                ))}
-                              </Pie>
-                              <Tooltip formatter={(value: number) => formatMoney(value)} />
-                            </PieChart>
-                          </ResponsiveContainer>
+                          <Suspense fallback={<ChartLoader />}>
+                            <ReactECharts option={expensesPieOption} style={{ height: '100%', width: '100%' }} />
+                          </Suspense>
                         ) : (
                           <div className="h-full flex items-center justify-center text-text-secondary">لا توجد مسحوبات</div>
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col">
                       <div className="p-5 border-b border-border bg-muted/30">
-                         <h3 className="font-bold text-lg">تفصيل المصروفات حسب الفئة</h3>
+                        <h3 className="font-bold text-lg">تفصيل المصروفات حسب الفئة</h3>
                       </div>
                       <div className="overflow-y-auto max-h-[300px]">
                         <table className="w-full text-sm text-start">
@@ -379,7 +421,7 @@ export default function ReportsPage() {
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col">
                     <div className="p-5 border-b border-border bg-muted/30">
-                       <h3 className="font-bold text-lg">أكثر 10 منتجات مبيعاً</h3>
+                      <h3 className="font-bold text-lg">أكثر 10 منتجات مبيعاً</h3>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm text-start">
@@ -407,29 +449,14 @@ export default function ReportsPage() {
                       </table>
                     </div>
                   </div>
-                  
+
                   <div className="bg-surface border border-border rounded-2xl p-5 shadow-sm">
-                    <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
-                       الكميات المباعة للمنتجات الأكثر مبيعاً
-                    </h3>
+                    <h3 className="font-bold text-lg mb-6">الكميات المباعة للمنتجات الأكثر مبيعاً</h3>
                     <div className="h-[300px] w-full" dir="ltr">
                       {report.topProducts.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={report.topProducts} margin={{ top: 10, right: 10, left: 10, bottom: 20 }} layout="vertical">
-                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#E5E7EB" />
-                            <XAxis type="number" tick={{fontSize: 12}} />
-                            <YAxis type="category" dataKey="name" tick={{fontSize: 12}} width={120} />
-                            <Tooltip 
-                              cursor={{fill: 'transparent'}}
-                              contentStyle={{ borderRadius: '12px', borderColor: '#E5E7EB', textAlign: 'right' }}
-                            />
-                            <Bar dataKey="qty" name="الكمية المباعة" fill="#D4AF37" radius={[0, 4, 4, 0]}>
-                              {report.topProducts.map((entry: any, index: number) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
+                        <Suspense fallback={<ChartLoader />}>
+                          <ReactECharts option={topProductsBarOption} style={{ height: '100%', width: '100%' }} />
+                        </Suspense>
                       ) : (
                         <div className="h-full flex items-center justify-center text-text-secondary">لا توجد بيانات</div>
                       )}
@@ -444,4 +471,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-
