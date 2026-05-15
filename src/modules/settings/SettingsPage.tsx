@@ -4,7 +4,7 @@ import { dbClient } from '@/db/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { performBackup } from '@/lib/backup';
+import { exportDb, importDb } from '@/lib/backup';
 import { changeDailyLock, changeAdminPin } from '@/lib/auth';
 import { useSettingsStore } from '@/stores/settings.store';
 import { Button } from '@/components/ui/Button';
@@ -87,7 +87,7 @@ export default function SettingsPage() {
   const handleExportBackup = async () => {
     requireAdminAction(async () => {
       try {
-        await performBackup();
+        await exportDb();
         toast.success('تم تصدير النسخة الاحتياطية بنجاح');
       } catch (e: any) {
         toast.error('فشل تصدير النسخة الاحتياطية: ' + e.message);
@@ -99,21 +99,15 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
     requireAdminAction(async () => {
-      if (confirm('تنبيه: استعادة النسخة الاحتياطية سيقوم بمسح كافة البيانات الحالية. هل أنت متأكد؟')) {
-        try {
-          const buffer = await file.arrayBuffer();
-          await dbClient.importDatabase(new Uint8Array(buffer));
-          toast.success('تم استعادة البيانات بنجاح. سيتم إعادة تحميل التطبيق.');
-          setTimeout(() => window.location.reload(), 1500);
-        } catch (err: any) {
-          toast.error('فشل استعادة البيانات: ' + err.message);
-        }
-      }
-      
-      // reset
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      try {
+        toast.loading('جارٍ التحقق من الملف وأخذ نسخة احتياطية واستعادة البيانات...');
+        await importDb(file);
+      } catch (err: any) {
+        toast.dismiss();
+        toast.error('فشلت الاستعادة: ' + err.message);
       }
     });
   };
