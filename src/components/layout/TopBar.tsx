@@ -1,7 +1,9 @@
 import { Settings } from 'lucide-react';
 import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 
 export function TopBar() {
+  const navigate = useNavigate();
   const today = format(new Date(), 'dd/MM/yyyy');
   return (
     <header className="h-[56px] border-b border-border bg-surface flex items-center justify-between px-4 sticky top-0 z-10 shrink-0">
@@ -11,7 +13,10 @@ export function TopBar() {
       <div className="hidden md:block text-text-secondary font-medium">
         {today}
       </div>
-      <button className="p-2 hover:bg-muted rounded-full text-text-secondary transition-colors">
+      <button 
+        onClick={() => navigate('/settings')}
+        className="p-2 hover:bg-muted rounded-full text-text-secondary transition-colors"
+      >
         <Settings className="w-5 h-5" />
       </button>
     </header>

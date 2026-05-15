@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getExpenseCategories, addExpenseCategory, updateExpenseCategory, ExpenseCategory } from '@/db/queries/expenses';
 import { Plus, CheckCircle, Trash2, Edit2, X, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ExpenseCategoriesDialogProps {
   isOpen: boolean;
@@ -11,6 +12,8 @@ interface ExpenseCategoriesDialogProps {
 
 export function ExpenseCategoriesDialog({ isOpen, onClose }: ExpenseCategoriesDialogProps) {
   const queryClient = useQueryClient();
+  const { requireAdminAction } = useAuth();
+  
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newCat, setNewCat] = useState({ name: '', type: 'variable' as 'fixed' | 'variable', sort_order: 0 });
@@ -46,14 +49,18 @@ export function ExpenseCategoriesDialog({ isOpen, onClose }: ExpenseCategoriesDi
 
   const handleAdd = () => {
     if (!newCat.name.trim()) return;
-    addMutation.mutate();
+    requireAdminAction(() => addMutation.mutate());
   };
 
   const handleUpdate = (id: string) => {
     if (editCat.name !== undefined && !editCat.name.trim()) {
       return;
     }
-    updateMutation.mutate({ id, data: editCat });
+    requireAdminAction(() => updateMutation.mutate({ id, data: editCat }));
+  };
+
+  const toggleStatus = (cat: ExpenseCategory) => {
+    requireAdminAction(() => updateMutation.mutate({ id: cat.id, data: { is_active: !cat.is_active } }));
   };
 
   if (!isOpen) return null;
@@ -207,7 +214,7 @@ export function ExpenseCategoriesDialog({ isOpen, onClose }: ExpenseCategoriesDi
                         
                         <button
                           className={`px-3 py-1.5 rounded-lg text-sm font-medium ${cat.is_active ? 'text-danger hover:bg-danger/10' : 'text-success hover:bg-success/10'}`}
-                          onClick={() => updateMutation.mutate({ id: cat.id, data: { is_active: !cat.is_active } })}
+                          onClick={() => toggleStatus(cat)}
                         >
                           {cat.is_active ? 'تعطيل' : 'تفعيل'}
                         </button>

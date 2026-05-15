@@ -3,7 +3,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { verifyCode, getLockoutSecondsRemaining, recordFailedAttempt, markUnlocked } from '@/lib/auth';
 import { get } from 'idb-keyval';
 import { Lock, Delete, Clock } from 'lucide-react';
-import { toast } from 'sonner';
+import { toastError, toastSuccess } from '@/components/ui/toast';
+import { NumPad } from '@/components/ui/NumPad';
 
 export function DailyLockScreen() {
   const { markDayUnlocked } = useAuth();
@@ -28,11 +29,11 @@ export function DailyLockScreen() {
       if (stored && await verifyCode(newPin, stored)) {
         await markUnlocked();
         markDayUnlocked();
-        toast.success("تم تأكيد الرمز");
+        toastSuccess("تم تأكيد الرمز");
       } else {
         await recordFailedAttempt('daily');
         setPin('');
-        toast.error("الرمز غير صحيح");
+        toastError("الرمز غير صحيح");
         const remaining = await getLockoutSecondsRemaining('daily');
         setLockoutSecs(remaining);
       }
@@ -63,6 +64,16 @@ export function DailyLockScreen() {
         <p className="text-text-secondary text-center max-w-sm">
           يرجى إدخال الركن الموحد (Daily Lock) لفتح نظام المبيعات
         </p>
+        <button 
+          onClick={async () => {
+            if (confirm("هل أنت متأكد من استعادة الأرقام السرية الافتراضية؟")) {
+              (window as any).resetPins();
+            }
+          }}
+          className="text-xs text-text-secondary mt-2 underline"
+        >
+          نسيت كلمة المرور؟
+        </button>
       </div>
 
       {lockoutSecs > 0 ? (
@@ -88,30 +99,12 @@ export function DailyLockScreen() {
             ))}
           </div>
 
-          <div className="grid grid-cols-3 gap-6 max-w-xs w-full" dir="ltr">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-              <button
-                key={num}
-                onClick={() => handleKeyPress(num)}
-                className="w-20 h-20 bg-surface rounded-full shadow-sm text-2xl font-bold hover:bg-muted active:scale-95 transition-all outline-none"
-              >
-                {num}
-              </button>
-            ))}
-            <div className="w-20 h-20"></div>
-            <button
-              onClick={() => handleKeyPress(0)}
-              className="w-20 h-20 bg-surface rounded-full shadow-sm text-2xl font-bold hover:bg-muted active:scale-95 transition-all outline-none"
-            >
-              0
-            </button>
-            <button
-              onClick={handleBackspace}
-              className="w-20 h-20 bg-surface rounded-full shadow-sm text-text-secondary hover:bg-muted active:scale-95 transition-all flex items-center justify-center outline-none"
-            >
-              <Delete className="w-8 h-8" />
-            </button>
-          </div>
+          <NumPad
+            onDigit={(num) => handleKeyPress(Number(num))}
+            onClear={handleBackspace}
+            onSubmit={() => handleKeypadSubmit(pin)}
+            submitDisabled={pin.length < 4}
+          />
         </>
       )}
     </div>

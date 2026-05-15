@@ -14,7 +14,8 @@ export interface SavedCart {
 
 interface SavedCartsState {
   savedCarts: SavedCart[];
-  saveCart: (name: string, items: CartItem[], globalDiscountType: 'amount' | 'percent', globalDiscountValue: number) => { success: boolean; error?: string };
+  saveCart: (name: string, items: CartItem[], globalDiscountType: 'amount' | 'percent', globalDiscountValue: number) => { success: boolean; error?: string; newCartId?: string };
+  updateCart: (id: string, items: CartItem[], globalDiscountType: 'amount' | 'percent', globalDiscountValue: number) => void;
   restoreCart: (id: string, cartStore: any) => void;
   deleteCart: (id: string) => void;
 }
@@ -40,7 +41,13 @@ export const useSavedCartsStore = create<SavedCartsState>()(
         };
         
         set({ savedCarts: [...savedCarts, newCart] });
-        return { success: true };
+        return { success: true, newCartId: newCart.id };
+      },
+      
+      updateCart: (id, items, globalDiscountType, globalDiscountValue) => {
+        set(state => ({
+          savedCarts: state.savedCarts.map(c => c.id === id ? { ...c, items: [...items], globalDiscountType, globalDiscountValue } : c)
+        }));
       },
       
       restoreCart: (id, cartStore) => {

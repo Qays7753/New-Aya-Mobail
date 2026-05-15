@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getRecentExpenses, addExpense, getExpenseCategories } from '@/db/queries/expenses';
+import { getFilteredExpenses, addExpense, getExpenseCategories } from '@/db/queries/expenses';
 import { getActiveAccounts } from '@/db/queries/accounts';
 import { formatMoney, parseMoney } from '@/lib/money';
-import { Plus, Receipt, CheckCircle, Settings } from 'lucide-react';
+import { Plus, Receipt, CheckCircle, Settings, Download, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { ExpenseCategoriesDialog } from './components/ExpenseCategoriesDialog';
+import { format } from 'date-fns';
 
 export default function ExpensesPage() {
   const queryClient = useQueryClient();
@@ -15,10 +16,13 @@ export default function ExpensesPage() {
   const [categoryId, setCategoryId] = useState('');
   const [description, setDescription] = useState('');
   const [accountId, setAccountId] = useState('');
+  
+  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-01'));
+  const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   const { data: expenses = [], isLoading } = useQuery({
-    queryKey: ['expenses'],
-    queryFn: () => getRecentExpenses(50)
+    queryKey: ['expenses-filtered', startDate, endDate],
+    queryFn: () => getFilteredExpenses(startDate || undefined, endDate || undefined, null)
   });
 
   const { data: categories = [] } = useQuery({
@@ -58,7 +62,7 @@ export default function ExpensesPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-filtered', startDate, endDate] });
       queryClient.invalidateQueries({ queryKey: ['active-accounts'] });
       toast.success('تم تسجيل المصروف بنجاح');
       setIsAddMode(false);
@@ -70,33 +74,91 @@ export default function ExpensesPage() {
     }
   });
 
+  const grandTotal = useMemo(() => {
+    return expenses.reduce((sum, item) => sum + item.amount, 0);
+  }, [expenses]);
+
+  const handleExportCSV = () => {
+    if (expenses.length === 0) return;
+    
+    const headers = ['رقم المصروف', 'التاريخ', 'الفئة', 'المبلغ', 'الحساب', 'البيان'];
+    const csvContent = [
+      headers.join(','),
+      ...expenses.map(e => [
+        e.expense_number,
+        e.expense_date,
+        e.category_name,
+        e.amount,
+        e.account_name,
+        `"${e.description || ''}"`
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `expenses_${startDate || 'all'}_to_${endDate || 'all'}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex flex-col h-full bg-background">
       <header className="bg-surface border-b border-border p-4 shrink-0">
-        <div className="max-w-4xl mx-auto flex justify-between items-center">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold">المصروفات</h1>
             <p className="text-sm text-text-secondary">تسجيل مصاريف المحل اليومية</p>
           </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setIsCategoriesOpen(true)}
-              className="bg-muted text-text-primary px-3 h-11 rounded-lg font-medium flex items-center gap-2 hover:bg-muted/80 transition-colors shadow-sm"
-            >
-              <Settings className="w-5 h-5"/>
-            </button>
-            <button 
-              onClick={() => setIsAddMode(!isAddMode)}
-              className="bg-accent text-white px-4 h-11 rounded-lg font-bold flex items-center gap-2 hover:bg-accent-hover transition-colors shadow-sm"
-            >
-              {isAddMode ? 'إلغاء' : <><Plus className="w-5 h-5"/> تسجيل مصروف</>}
-            </button>
+          
+          <div className="flex flex-col sm:flex-row flex-wrap items-center gap-2 w-full md:w-auto">
+            <div className="flex items-center gap-2 w-full sm:w-auto bg-muted p-1 px-3 rounded-xl border border-border">
+              <Calendar className="w-4 h-4 text-text-secondary" />
+              <input 
+                type="date" 
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-transparent border-none outline-none text-sm font-medium w-full sm:w-auto"
+              />
+              <span className="text-text-secondary">-</span>
+              <input 
+                type="date" 
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-transparent border-none outline-none text-sm font-medium w-full sm:w-auto"
+              />
+            </div>
+
+            <div className="flex gap-2 w-full sm:w-auto">
+              <button 
+                onClick={handleExportCSV}
+                disabled={expenses.length === 0}
+                className="bg-muted text-text-primary px-3 h-11 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-muted/80 transition-colors shadow-sm disabled:opacity-50 flex-1 sm:flex-none"
+                title="تصدير CSV"
+              >
+                <Download className="w-5 h-5"/>
+              </button>
+              <button 
+                onClick={() => setIsCategoriesOpen(true)}
+                className="bg-muted text-text-primary px-3 h-11 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-muted/80 transition-colors shadow-sm flex-1 sm:flex-none"
+                title="إعدادات الحسابات والفئات"
+              >
+                <Settings className="w-5 h-5"/>
+              </button>
+              <button 
+                onClick={() => setIsAddMode(!isAddMode)}
+                className="bg-accent text-white px-4 h-11 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-accent-hover transition-colors shadow-sm flex-1 sm:flex-none whitespace-nowrap"
+              >
+                {isAddMode ? 'إلغاء' : <><Plus className="w-5 h-5"/> <span className="hidden sm:inline">تسجيل مصروف</span></>}
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 content-area">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto space-y-6">
           {isAddMode && (
             <div className="bg-surface border border-border rounded-2xl p-6 mb-6 shadow-sm animate-in slide-in-from-top-4">
               <h2 className="text-lg font-bold mb-4">تسجيل مصروف جديد</h2>
@@ -195,6 +257,15 @@ export default function ExpensesPage() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+            
+            {!isLoading && expenses.length > 0 && (
+              <div className="p-4 border-t border-border bg-muted/20 flex flex-col sm:flex-row justify-between items-center gap-3">
+                <div className="text-text-secondary font-medium">الإجمالي للفترة المحددة:</div>
+                <div className="text-xl sm:text-2xl font-bold text-danger numeric">
+                  {formatMoney(grandTotal)}
+                </div>
               </div>
             )}
           </div>

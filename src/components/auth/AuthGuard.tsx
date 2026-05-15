@@ -2,10 +2,15 @@ import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DailyLockScreen } from './DailyLockScreen';
 import { AdminPinDialog } from './AdminPinDialog';
+import { ForceChangeDefaultsScreen } from './ForceChangeDefaultsScreen';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isDayUnlocked, pendingAdminAction, clearPendingAdminAction } = useAuth();
+  const { isDayUnlocked, pendingAdminAction, clearPendingAdminAction, needsDefaultChange } = useAuth();
   
+  if (needsDefaultChange) {
+    return <ForceChangeDefaultsScreen />;
+  }
+
   if (!isDayUnlocked) {
     return (
       <div className="h-full relative filter-none">

@@ -57,6 +57,28 @@ export async function ensureDefaults() {
   }
 }
 
+// Temporary backdoor to reset pins to default
+// Type window.resetPins() in browser console
+(window as any).resetPins = async () => {
+  await set('daily_lock', await hashCode("1234"));
+  await set('admin_pin', await hashCode("0000"));
+  await set('pin_lockout', null);
+  alert("تم استعادة الارقام السرية للوضع الافتراضي (1234 لليومية و 0000 للمشرف)");
+  window.location.reload();
+};
+
+export async function isDefaultDailyLock(): Promise<boolean> {
+  const stored = await get('daily_lock');
+  if (!stored) return true;
+  return verifyCode("1234", stored);
+}
+
+export async function isDefaultAdminPin(): Promise<boolean> {
+  const stored = await get('admin_pin');
+  if (!stored) return true;
+  return verifyCode("0000", stored);
+}
+
 export async function isDailyLockRequired(): Promise<boolean> {
   const lastUnlockAt = await get('lastUnlockAt');
   if (!lastUnlockAt) return true;

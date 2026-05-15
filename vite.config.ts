@@ -37,15 +37,25 @@ export default defineConfig(({mode}) => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,wasm}'],
           maximumFileSizeToCacheInBytes: 5000000,
+          navigateFallback: '/index.html',
           runtimeCaching: [
             {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              urlPattern: /\.(?:js|css)$/i,
               handler: 'CacheFirst',
               options: {
-                cacheName: 'google-fonts-cache',
+                cacheName: 'js-css-cache',
                 expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365
+                  maxAgeSeconds: 60 * 60 * 24 * 365 // سنة كاملة
+                }
+              }
+            },
+            {
+              urlPattern: /\.(?:woff2?|woff)$/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'fonts',
+                expiration: {
+                  maxAgeSeconds: 60 * 60 * 24 * 365 // immutable
                 },
                 cacheableResponse: {
                   statuses: [0, 200]
@@ -53,16 +63,25 @@ export default defineConfig(({mode}) => {
               }
             },
             {
-              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+              urlPattern: /\.(?:png|jpg|jpeg|webp|svg)$/i,
               handler: 'CacheFirst',
               options: {
-                cacheName: 'gstatic-fonts-cache',
+                cacheName: 'images',
                 expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365
+                  maxEntries: 100,
+                  maxAgeSeconds: 60 * 60 * 24 * 30 // 30 يوماً
                 },
                 cacheableResponse: {
                   statuses: [0, 200]
+                }
+              }
+            },
+            {
+              urlPattern: ({ request }) => request.mode === 'navigate',
+              handler: 'NetworkOnly',
+              options: {
+                precacheFallback: {
+                  fallbackURL: '/index.html'
                 }
               }
             }

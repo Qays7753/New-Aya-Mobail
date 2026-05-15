@@ -1,79 +1,143 @@
-import React, { useState, useRef } from 'react';
-import { Settings, Shield, HardDrive, Download, Upload, AlertTriangle, Key } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Settings, Shield, HardDrive, Download, Upload, AlertTriangle, Key, Store, Receipt } from 'lucide-react';
 import { dbClient } from '@/db/client';
-import { savePin } from '@/lib/pin';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { performBackup } from '@/lib/backup';
+import { changeDailyLock, changeAdminPin } from '@/lib/auth';
+import { useSettingsStore } from '@/stores/settings.store';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<'security' | 'backup'>('security');
+  const [activeTab, setActiveTab] = useState<'general' | 'pos' | 'security' | 'backup'>('general');
+  const { settings, updateSettings } = useSettingsStore();
+
+  // General Settings
+  const [storeName, setStoreName] = useState(settings.storeName);
+  const [storePhone, setStoreNamePhone] = useState(settings.storePhone);
+  const [storeAddress, setStoreAddress] = useState(settings.storeAddress);
+
+  // POS Settings
+  const [receiptHeader, setReceiptHeader] = useState(settings.receiptHeader);
+  const [receiptFooter, setReceiptFooter] = useState(settings.receiptFooter);
+  const [taxPercent, setTaxPercent] = useState(settings.taxPercent.toString());
   
-  // Security
-  const [newPin, setNewPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
-  const [isChangingPin, setIsChangingPin] = useState(false);
+  // Security - Daily
+  const [dailyLockCurrentAdminPin, setDailyLockCurrentAdminPin] = useState('');
+  const [newDailyLock, setNewDailyLock] = useState('');
+  const [confirmDailyLock, setConfirmDailyLock] = useState('');
+  
+  // Security - Admin
+  const [adminCurrentPin, setAdminCurrentPin] = useState('');
+  const [newAdminPin, setNewAdminPin] = useState('');
+  const [confirmAdminPin, setConfirmAdminPin] = useState('');
+
+  const [isChangingDaily, setIsChangingDaily] = useState(false);
+  const [isChangingAdmin, setIsChangingAdmin] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { requireAdminAction } = useAuth();
 
-  const handleSavePin = async () => {
-    if (newPin.length < 4) {
-      toast.error('رمز PIN يجب أن يكون 4 أرقام على الأقل');
+  const handleSaveDailyLock = async () => {
+    if (newDailyLock.length < 4) {
+      toast.error('الرمز يجب أن يكون 4 أرقام على الأقل');
       return;
     }
-    if (newPin !== confirmPin) {
+    if (newDailyLock !== confirmDailyLock) {
       toast.error('الرموز غير متطابقة');
       return;
     }
 
     try {
-      await savePin(newPin, false);
-      toast.success('تم تغيير رمز PIN بنجاح');
-      setIsChangingPin(false);
-      setNewPin('');
-      setConfirmPin('');
+      await changeDailyLock(newDailyLock, dailyLockCurrentAdminPin);
+      toast.success('تم تغيير قفل اليومية بنجاح');
+      setIsChangingDaily(false);
+      setNewDailyLock('');
+      setConfirmDailyLock('');
+      setDailyLockCurrentAdminPin('');
     } catch (e: any) {
-      toast.error('حدث خطأ أثناء حفظ الرمز');
+      toast.error(e.message || 'خطأ في تغيير الرمز');
+    }
+  };
+
+  const handleSaveAdminPin = async () => {
+    if (newAdminPin.length < 4) {
+      toast.error('الرمز يجب أن يكون 4 أرقام على الأقل');
+      return;
+    }
+    if (newAdminPin !== confirmAdminPin) {
+      toast.error('الرموز غير متطابقة');
+      return;
+    }
+
+    try {
+      await changeAdminPin(adminCurrentPin, newAdminPin);
+      toast.success('تم تغيير رمز المشرف بنجاح');
+      setIsChangingAdmin(false);
+      setNewAdminPin('');
+      setConfirmAdminPin('');
+      setAdminCurrentPin('');
+    } catch (e: any) {
+      toast.error(e.message || 'خطأ في تغيير الرمز');
     }
   };
 
   const handleExportBackup = async () => {
-    try {
-      const dbData = await dbClient.exportDatabase();
-      const blob = new Blob([dbData], { type: 'application/x-sqlite3' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `pos_backup_${new Date().toISOString().split('T')[0]}.db`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success('تم تصدير النسخة الاحتياطية بنجاح');
-    } catch (e: any) {
-      toast.error('فشل تصدير النسخة الاحتياطية: ' + e.message);
-    }
+    requireAdminAction(async () => {
+      try {
+        await performBackup();
+        toast.success('تم تصدير النسخة الاحتياطية بنجاح');
+      } catch (e: any) {
+        toast.error('فشل تصدير النسخة الاحتياطية: ' + e.message);
+      }
+    });
   };
 
   const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (confirm('تنبيه: استعادة النسخة الاحتياطية سيقوم بمسح كافة البيانات الحالية. هل أنت متأكد؟')) {
-      try {
-        const buffer = await file.arrayBuffer();
-        await dbClient.importDatabase(new Uint8Array(buffer));
-        toast.success('تم استعادة البيانات بنجاح. سيتم إعادة تحميل التطبيق.');
-        setTimeout(() => window.location.reload(), 1500);
-      } catch (err: any) {
-        toast.error('فشل استعادة البيانات: ' + err.message);
+    requireAdminAction(async () => {
+      if (confirm('تنبيه: استعادة النسخة الاحتياطية سيقوم بمسح كافة البيانات الحالية. هل أنت متأكد؟')) {
+        try {
+          const buffer = await file.arrayBuffer();
+          await dbClient.importDatabase(new Uint8Array(buffer));
+          toast.success('تم استعادة البيانات بنجاح. سيتم إعادة تحميل التطبيق.');
+          setTimeout(() => window.location.reload(), 1500);
+        } catch (err: any) {
+          toast.error('فشل استعادة البيانات: ' + err.message);
+        }
       }
-    }
-    
-    // reset
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+      
+      // reset
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    });
+  };
+
+  const handleSaveGeneral = () => {
+    requireAdminAction(() => {
+      updateSettings({
+        storeName,
+        storePhone,
+        storeAddress,
+      });
+      toast.success('تم حفظ إعدادات المتجر');
+    });
+  };
+
+  const handleSavePOS = () => {
+    requireAdminAction(() => {
+      updateSettings({
+        receiptHeader,
+        receiptFooter,
+        taxPercent: parseFloat(taxPercent) || 0,
+      });
+      toast.success('تم حفظ إعدادات الطباعة');
+    });
   };
 
   return (
@@ -95,6 +159,30 @@ export default function SettingsPage() {
           
           {/* Sidebar Tabs */}
           <div className="w-full md:w-64 shrink-0 flex flex-col gap-2">
+            <button
+              onClick={() => setActiveTab('general')}
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors text-start",
+                activeTab === 'general' 
+                  ? "bg-accent text-white shadow-sm" 
+                  : "bg-surface text-text-secondary hover:bg-muted"
+              )}
+            >
+              <Store className="w-5 h-5" />
+              إعدادات المتجر
+            </button>
+            <button
+              onClick={() => setActiveTab('pos')}
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors text-start",
+                activeTab === 'pos' 
+                  ? "bg-accent text-white shadow-sm" 
+                  : "bg-surface text-text-secondary hover:bg-muted"
+              )}
+            >
+              <Receipt className="w-5 h-5" />
+              نقطة البيع والطباعة
+            </button>
             <button
               onClick={() => setActiveTab('security')}
               className={cn(
@@ -124,71 +212,213 @@ export default function SettingsPage() {
           {/* Main Content */}
           <div className="flex-1 bg-surface border border-border rounded-2xl p-6">
             
-            {activeTab === 'security' && (
+            {activeTab === 'general' && (
               <div className="space-y-6 animate-in fade-in">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <Key className="w-6 h-6 text-accent" /> رمز الحماية (PIN)
+                <h2 className="text-xl font-bold flex items-center gap-2 mb-4">
+                  <Store className="w-6 h-6 text-accent" /> إعدادات المتجر
                 </h2>
                 
-                <div className="bg-muted p-4 rounded-xl border border-border">
-                  <p className="text-sm text-text-secondary mb-4 leading-relaxed">
-                    يُستخدم رمز الحماية لتأكيد العمليات الحساسة مثل استرجاع الفواتير، التعديل على الحسابات، وتسليم الأجهزة من الصيانة.
-                  </p>
+                <div className="max-w-md space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">اسم المتجر</label>
+                    <input
+                      type="text"
+                      value={storeName}
+                      onChange={(e) => setStoreName(e.target.value)}
+                      className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">رقم الهاتف (للتواصل السريع)</label>
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={storePhone}
+                      onChange={(e) => setStoreNamePhone(e.target.value)}
+                      className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent text-start text-left"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">العنوان</label>
+                    <textarea
+                      value={storeAddress}
+                      onChange={(e) => setStoreAddress(e.target.value)}
+                      className="w-full p-3 rounded-lg border border-border outline-none focus:border-accent resize-none h-24"
+                    />
+                  </div>
                   
-                  {!isChangingPin ? (
-                    <button
-                      onClick={() => {
-                        requireAdminAction(() => setIsChangingPin(true));
-                      }}
-                      className="h-11 px-6 bg-accent text-white font-bold rounded-lg hover:bg-accent-hover transition-colors flex items-center gap-2"
-                    >
-                      تغيير رمز PIN
-                    </button>
-                  ) : (
-                    <div className="space-y-4 max-w-sm bg-surface p-4 rounded-xl border border-border">
-                      <h3 className="font-bold">إعداد رمز جديد</h3>
-                      <div>
-                        <label className="block text-sm mb-1 text-text-secondary">الرمز الجديد</label>
-                        <input
-                          type="password"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          value={newPin}
-                          onChange={(e) => setNewPin(e.target.value)}
-                          className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent text-center tracking-widest text-lg"
-                        />
+                  <button
+                    onClick={handleSaveGeneral}
+                    className="h-11 px-6 bg-accent text-white font-bold rounded-lg hover:bg-accent-hover transition-colors"
+                  >
+                    حفظ إعدادات المتجر
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'pos' && (
+              <div className="space-y-6 animate-in fade-in">
+                <h2 className="text-xl font-bold flex items-center gap-2 mb-4">
+                  <Receipt className="w-6 h-6 text-accent" /> نقطة البيع والطباعة
+                </h2>
+                
+                <div className="max-w-md space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">الرقم الضريبي / ترويسة الفاتورة (أعلى الفاتورة)</label>
+                    <textarea
+                      value={receiptHeader}
+                      onChange={(e) => setReceiptHeader(e.target.value)}
+                      className="w-full p-3 rounded-lg border border-border outline-none focus:border-accent resize-none h-24 text-center leading-relaxed"
+                      placeholder="مثال: الرقم الضريبي: 123456789"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">الجزء السفلي من الفاتورة (تذييل)</label>
+                    <textarea
+                      value={receiptFooter}
+                      onChange={(e) => setReceiptFooter(e.target.value)}
+                      className="w-full p-3 rounded-lg border border-border outline-none focus:border-accent resize-none h-24 text-center leading-relaxed"
+                      placeholder="مثال: شكراً لتسوقكم معنا"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">نسبة الضريبة الافتراضية (%)</label>
+                    <input
+                      type="number"
+                      dir="ltr"
+                      min="0"
+                      max="100"
+                      value={taxPercent}
+                      onChange={(e) => setTaxPercent(e.target.value)}
+                      className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent text-start"
+                    />
+                  </div>
+                  
+                  <button
+                    onClick={handleSavePOS}
+                    className="h-11 px-6 bg-accent text-white font-bold rounded-lg hover:bg-accent-hover transition-colors"
+                  >
+                    حفظ إعدادات الطباعة
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'security' && (
+              <div className="space-y-8 animate-in fade-in">
+                {/* Daily Lock Section */}
+                <div>
+                  <h2 className="text-xl font-bold flex items-center gap-2 mb-4">
+                    <Key className="w-6 h-6 text-accent" /> رمز قفل اليومية (Daily Lock)
+                  </h2>
+                  <div className="bg-muted p-4 rounded-xl border border-border">
+                    <p className="text-sm text-text-secondary mb-4 leading-relaxed">
+                      يُستخدم لفتح اليومية في بداية المناوبة.
+                    </p>
+                    
+                    {!isChangingDaily ? (
+                      <button
+                        onClick={() => setIsChangingDaily(true)}
+                        className="h-11 px-6 bg-surface border border-border text-text-primary font-bold rounded-lg hover:border-accent transition-colors flex items-center gap-2"
+                      >
+                        تغيير قفل اليومية
+                      </button>
+                    ) : (
+                      <div className="space-y-4 max-w-sm bg-surface p-4 rounded-xl border border-border">
+                        <h3 className="font-bold">إعداد رمز جديد</h3>
+                        <div>
+                          <label className="block text-sm mb-1 text-text-secondary">رمز المشرف الحالي (للتحقق)</label>
+                          <input
+                            type="password" inputMode="numeric" pattern="[0-9]*"
+                            value={dailyLockCurrentAdminPin} onChange={e => setDailyLockCurrentAdminPin(e.target.value)}
+                            className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent text-center tracking-widest text-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm mb-1 text-text-secondary">الرمز اليومي الجديد</label>
+                          <input
+                            type="password" inputMode="numeric" pattern="[0-9]*"
+                            value={newDailyLock} onChange={e => setNewDailyLock(e.target.value)}
+                            className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent text-center tracking-widest text-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm mb-1 text-text-secondary">تأكيد الرمز الجديد</label>
+                          <input
+                            type="password" inputMode="numeric" pattern="[0-9]*"
+                            value={confirmDailyLock} onChange={e => setConfirmDailyLock(e.target.value)}
+                            className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent text-center tracking-widest text-lg"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={handleSaveDailyLock} className="flex-1 h-11 bg-accent text-white font-bold rounded-lg hover:bg-accent-hover transition-colors">
+                            حفظ
+                          </button>
+                          <button onClick={() => setIsChangingDaily(false)} className="flex-1 h-11 bg-muted text-text-primary font-bold rounded-lg hover:bg-border transition-colors border border-border">
+                            إلغاء
+                          </button>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm mb-1 text-text-secondary">تأكيد الرمز</label>
-                        <input
-                          type="password"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          value={confirmPin}
-                          onChange={(e) => setConfirmPin(e.target.value)}
-                          className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent text-center tracking-widest text-lg"
-                        />
+                    )}
+                  </div>
+                </div>
+
+                {/* Admin PIN Section */}
+                <div>
+                  <h2 className="text-xl font-bold flex items-center gap-2 mb-4">
+                    <Shield className="w-6 h-6 text-danger" /> رمز المشرف (Admin PIN)
+                  </h2>
+                  <div className="bg-danger-bg/50 p-4 rounded-xl border border-danger/20">
+                    <p className="text-sm text-text-secondary mb-4 leading-relaxed">
+                      للعمليات الحساسة مثل المرتجعات، الإعدادات، واسترجاع المبالغ.
+                    </p>
+                    
+                    {!isChangingAdmin ? (
+                      <button
+                        onClick={() => setIsChangingAdmin(true)}
+                        className="h-11 px-6 bg-danger text-white font-bold rounded-lg hover:opacity-90 transition-colors flex items-center gap-2"
+                      >
+                        تغيير رمز المشرف
+                      </button>
+                    ) : (
+                      <div className="space-y-4 max-w-sm bg-surface p-4 rounded-xl border border-danger/20 shadow-sm">
+                        <h3 className="font-bold text-danger">تغيير رمز المشرف</h3>
+                        <div>
+                          <label className="block text-sm mb-1 text-text-secondary">رمز المشرف الحالي</label>
+                          <input
+                            type="password" inputMode="numeric" pattern="[0-9]*"
+                            value={adminCurrentPin} onChange={e => setAdminCurrentPin(e.target.value)}
+                            className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-danger text-center tracking-widest text-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm mb-1 text-text-secondary">رمز المشرف الجديد</label>
+                          <input
+                            type="password" inputMode="numeric" pattern="[0-9]*"
+                            value={newAdminPin} onChange={e => setNewAdminPin(e.target.value)}
+                            className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-danger text-center tracking-widest text-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm mb-1 text-text-secondary">تأكيد الرمز الجديد</label>
+                          <input
+                            type="password" inputMode="numeric" pattern="[0-9]*"
+                            value={confirmAdminPin} onChange={e => setConfirmAdminPin(e.target.value)}
+                            className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-danger text-center tracking-widest text-lg"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={handleSaveAdminPin} className="flex-1 h-11 bg-danger text-white font-bold rounded-lg hover:opacity-90 transition-opacity">
+                            تأكيد التغيير
+                          </button>
+                          <button onClick={() => setIsChangingAdmin(false)} className="flex-1 h-11 bg-muted text-text-primary font-bold rounded-lg hover:bg-border transition-colors border border-border">
+                            إلغاء
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleSavePin}
-                          className="flex-1 h-11 bg-accent text-white font-bold rounded-lg hover:bg-accent-hover transition-colors"
-                        >
-                          تأكيد
-                        </button>
-                        <button
-                          onClick={() => {
-                            setIsChangingPin(false);
-                            setNewPin('');
-                            setConfirmPin('');
-                          }}
-                          className="flex-1 h-11 bg-muted text-text-primary font-bold rounded-lg hover:bg-border transition-colors border border-border"
-                        >
-                          إلغاء
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             )}

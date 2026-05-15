@@ -94,6 +94,16 @@ export async function createTopup({
   const now = new Date();
   const dateStr = format(now, 'yyyy-MM-dd');
   const timestamp = now.toISOString();
+
+  let supplier_name: string | null = null;
+  if (supplier_id) {
+    const sResult = await dbClient.query("SELECT name FROM suppliers WHERE id = ?", [supplier_id]);
+    if (sResult.length > 0) supplier_name = sResult[0].name;
+  }
+
+  let account_name: string | null = null;
+  const aResult = await dbClient.query("SELECT name FROM accounts WHERE id = ?", [account_id]);
+  if (aResult.length > 0) account_name = aResult[0].name;
   
   let nextVal = 1;
   const seqResult = await dbClient.query("SELECT last_val FROM sequences WHERE name = 'topup'");
@@ -108,18 +118,18 @@ export async function createTopup({
       params: [nextVal]
     },
     {
-      sql: `INSERT INTO topups (id, topup_number, topup_date, account_id, supplier_id, amount, cost, profit, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [topupId, topupNumber, dateStr, account_id, supplier_id || null, amount, cost, profit, notes || null, timestamp]
+      sql: `INSERT INTO topups (id, topup_number, topup_date, account_id, account_name, supplier_id, supplier_name, amount, cost, profit, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [topupId, topupNumber, dateStr, account_id, account_name, supplier_id || null, supplier_name, amount, cost, profit, notes || null, timestamp]
     },
     {
       sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
       params: [cost, account_id]
     },
     {
-      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [nanoid(), dateStr, account_id, 'credit', cost, 'topup', topupId, `شحن رصيد: ${topupNumber}`, timestamp]
+      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [nanoid(), dateStr, account_id, account_name, 'credit', cost, 'topup', topupId, `شحن رصيد: ${topupNumber}`, timestamp]
     }
   ];
 
@@ -142,6 +152,14 @@ export async function createTransfer({
   const dateStr = format(now, 'yyyy-MM-dd');
   const timestamp = now.toISOString();
 
+  let from_account_name: string | null = null;
+  let to_account_name: string | null = null;
+  const accountsResult = await dbClient.query("SELECT id, name FROM accounts WHERE id IN (?, ?)", [from_account_id, to_account_id]);
+  accountsResult.forEach(a => {
+    if (a.id === from_account_id) from_account_name = a.name;
+    if (a.id === to_account_id) to_account_name = a.name;
+  });
+
   let nextVal = 1;
   const seqResult = await dbClient.query("SELECT last_val FROM sequences WHERE name = 'transfer'");
   if (seqResult.length > 0) nextVal = seqResult[0].last_val + 1;
@@ -155,27 +173,27 @@ export async function createTransfer({
       params: [nextVal]
     },
     {
-      sql: `INSERT INTO transfers (id, transfer_number, transfer_date, from_account_id, to_account_id, amount, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [transferId, transferNumber, dateStr, from_account_id, to_account_id, amount, notes || null, timestamp]
+      sql: `INSERT INTO transfers (id, transfer_number, transfer_date, from_account_id, from_account_name, to_account_id, to_account_name, amount, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [transferId, transferNumber, dateStr, from_account_id, from_account_name, to_account_id, to_account_name, amount, notes || null, timestamp]
     },
     {
       sql: `UPDATE accounts SET balance = balance - ? WHERE id = ?`,
       params: [amount, from_account_id]
     },
     {
-      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [nanoid(), dateStr, from_account_id, 'debit', amount, 'transfer', transferId, `تحويل صادر: ${transferNumber}`, timestamp]
+      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [nanoid(), dateStr, from_account_id, from_account_name, 'debit', amount, 'transfer', transferId, `تحويل صادر: ${transferNumber}`, timestamp]
     },
     {
       sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
       params: [amount, to_account_id]
     },
     {
-      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [nanoid(), dateStr, to_account_id, 'credit', amount, 'transfer', transferId, `تحويل وارد: ${transferNumber}`, timestamp]
+      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [nanoid(), dateStr, to_account_id, to_account_name, 'credit', amount, 'transfer', transferId, `تحويل وارد: ${transferNumber}`, timestamp]
     }
   ];
 

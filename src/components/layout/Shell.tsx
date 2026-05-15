@@ -8,6 +8,7 @@ import { BottomNav } from './BottomNav';
 import { AlertTriangle, X } from 'lucide-react';
 
 import { PWABadge } from '../pwa/PWABadge';
+import { PersistenceBanner } from './PersistenceBanner';
 
 export function Shell() {
   const [showWarning, setShowWarning] = useState(false);
@@ -27,6 +28,7 @@ export function Shell() {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background w-full max-w-[100vw] text-text-primary">
       <TopBar />
+      <PersistenceBanner />
       
       {showWarning && (
         <div className="bg-warning-bg/90 border-b border-warning/30 px-4 py-2 flex items-start sm:items-center justify-between gap-3 text-sm z-20 shrink-0">

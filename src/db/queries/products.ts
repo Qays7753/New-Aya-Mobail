@@ -13,6 +13,8 @@ export interface Product {
   is_quick_add: boolean;
   is_active: boolean;
   notes: string | null;
+  image_path?: string | null;
+  icon?: string;
 }
 
 export async function getActiveProducts(search?: string, category?: string): Promise<Product[]> {
@@ -77,12 +79,12 @@ export async function addProduct(data: Omit<Product, 'id' | 'is_active'>) {
   
   try {
     await dbClient.run(
-      `INSERT INTO products (id, name, sku, category, sale_price, stock_qty, min_stock, track_stock, is_quick_add, is_active, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+      `INSERT INTO products (id, name, sku, category, sale_price, stock_qty, min_stock, track_stock, is_quick_add, is_active, notes, image_path, icon, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
       [
         id, data.name, data.sku || null, data.category, data.sale_price, 
         data.stock_qty, data.min_stock, data.track_stock ? 1 : 0, 
-        data.is_quick_add ? 1 : 0, data.notes || null, now, now
+        data.is_quick_add ? 1 : 0, data.notes || null, data.image_path || null, data.icon || 'Box', now, now
       ]
     );
     return id;

@@ -1,23 +1,28 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCartStore, CartItem } from '@/stores/cart.store';
 import { useSavedCartsStore } from '@/stores/savedCarts.store';
 import { formatMoney } from '@/lib/money';
 import { Plus, Minus, Trash2, ShoppingCart as ShoppingCartIcon, Save, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PaymentDialog, SuccessDialog } from './PaymentDialog';
-import { SavedCartsPanel } from './SavedCartsPanel';
 import { Dialog } from '@/components/ui/Dialog';
 import { toast } from 'sonner';
 
 export function CartSidebar() {
-  const { items, removeItem, updateQuantity, clearCart, getSubtotal, getTotalDiscount, getTotal } = useCartStore();
+  const { items, removeItem, updateQuantity, clearCart, getSubtotal, getTotalDiscount, getTotal, pulseTrigger } = useCartStore();
   const { savedCarts, saveCart } = useSavedCartsStore();
   const cartStore = useCartStore(); // to pass to restoring if needed
   
+  const [pulse, setPulse] = useState(false);
+  useEffect(() => {
+    if (pulseTrigger > 0) {
+      setPulse(true);
+      const t = setTimeout(() => setPulse(false), 300);
+      return () => clearTimeout(t);
+    }
+  }, [pulseTrigger]);
+
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
-  const [isSavedCartsOpen, setIsSavedCartsOpen] = useState(false);
-  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
-  const [cartNameInput, setCartNameInput] = useState('');
   
   const [successData, setSuccessData] = useState<{ isOpen: boolean; invoiceId: string; invoiceNumber: string; change: number }>({
     isOpen: false,
@@ -30,56 +35,27 @@ export function CartSidebar() {
     if (items.length === 0) return;
     setIsPaymentOpen(true);
   };
-  
-  const handleSaveCart = () => {
-    if (!cartNameInput.trim()) {
-      toast.error('يرجى إدخال اسم للسلة');
-      return;
-    }
-    const res = saveCart(cartNameInput, cartStore.items, cartStore.globalDiscountType, cartStore.globalDiscountValue);
-    if (res.success) {
-      toast.success('تم حفظ السلة بنجاح');
-      clearCart();
-      setIsSaveDialogOpen(false);
-      setCartNameInput('');
-    } else {
-      toast.error(res.error || 'فشل حفظ السلة');
-    }
+
+  const handleDelete = (item: CartItem) => {
+    const itemCopy = { ...item };
+    removeItem(item.cartItemId);
+    toast('تم حذف العنصر', {
+      action: {
+        label: 'تراجع',
+        onClick: () => cartStore.restoreItem(itemCopy),
+      },
+      duration: 5000,
+    });
   };
 
   return (
     <>
-      <SavedCartsPanel isOpen={isSavedCartsOpen} onClose={() => setIsSavedCartsOpen(false)} />
-      
       <div className="w-full h-full bg-surface border-s border-border flex flex-col pt-4 pb-0">
-        <div className="px-4 pb-4 border-b border-border flex items-center justify-between shrink-0">
+        <div className={cn("px-4 pb-4 border-b border-border flex items-center justify-between shrink-0 transition-all", pulse && "bg-accent/10 rounded-xl mx-2 scale-[1.02]")}>
           <h2 className="text-xl font-bold flex items-center gap-2">
             السلة <span className="bg-accent text-white text-sm px-2 py-0.5 rounded-full">{items.length}</span>
           </h2>
           <div className="flex gap-2">
-            <button 
-              onClick={() => setIsSavedCartsOpen(true)}
-              className="p-2 text-text-secondary hover:text-accent hover:bg-accent/10 rounded-full transition-colors relative"
-            >
-              <Clock className="w-5 h-5" />
-              {savedCarts.length > 0 && <span className="absolute top-0 end-0 bg-accent text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full leading-none">{savedCarts.length}</span>}
-            </button>
-            {items.length > 0 && (
-              <button 
-                onClick={() => {
-                  if (savedCarts.length >= 3) {
-                    toast.error('تم الوصول للحد الأقصى (3 سلات)');
-                    return;
-                  }
-                  setCartNameInput(`سلة ${new Date().toLocaleTimeString('ar-IQ', {hour: '2-digit', minute:'2-digit'})}`);
-                  setIsSaveDialogOpen(true);
-                }}
-                className="p-2 text-text-secondary hover:text-accent hover:bg-accent/10 rounded-full transition-colors"
-                title="حفظ السلة مؤقتاً"
-              >
-                <Save className="w-5 h-5" />
-              </button>
-            )}
             {items.length > 0 && (
               <button 
                 onClick={() => {
@@ -101,32 +77,37 @@ export function CartSidebar() {
             </div>
           ) : (
             items.map((item) => (
-              <div key={item.cartItemId} className="bg-muted/50 rounded-lg p-3 flex flex-col gap-2 relative group">
-                <div className="flex justify-between items-start">
-                  <span className="font-semibold line-clamp-2 leading-tight">{item.product.name}</span>
+              <div key={item.cartItemId} className="bg-muted/50 rounded-lg px-3 h-[80px] flex flex-col justify-center relative group shrink-0">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="font-semibold line-clamp-1 leading-tight text-sm pe-2">{item.product.name}</span>
                   <span className="numeric font-bold">{formatMoney(item.product.sale_price)}</span>
                 </div>
-                <div className="flex justify-between items-center mt-1">
-                  <div className="flex items-center gap-3 bg-surface border border-border rounded-full p-1">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 bg-surface border border-border rounded-full p-0.5">
                     <button 
-                      onClick={() => updateQuantity(item.cartItemId, item.quantity - 1)}
-                      disabled={item.quantity <= 1}
-                      className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-muted disabled:opacity-50 text-text-secondary"
+                      onClick={() => {
+                        if (item.quantity <= 1) {
+                          handleDelete(item);
+                        } else {
+                          updateQuantity(item.cartItemId, item.quantity - 1);
+                        }
+                      }}
+                      className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-muted text-text-secondary"
                     >
                       <Minus className="w-4 h-4" />
                     </button>
-                    <span className="numeric w-4 text-center font-bold">{item.quantity}</span>
+                    <span className="numeric w-5 text-center font-bold text-sm">{item.quantity}</span>
                     <button 
                       onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)}
-                      className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-muted text-text-secondary"
+                      className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-muted text-text-secondary"
                     >
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
                   
                   <button 
-                    onClick={() => removeItem(item.cartItemId)}
-                    className="p-2 text-text-secondary hover:text-danger transition-colors bg-surface rounded-full shadow-sm"
+                    onClick={() => handleDelete(item)}
+                    className="w-9 h-9 flex items-center justify-center text-text-secondary hover:text-danger transition-colors bg-surface rounded-full shadow-sm"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -143,21 +124,22 @@ export function CartSidebar() {
               <span className="numeric">{formatMoney(getSubtotal())}</span>
             </div>
             {getTotalDiscount() > 0 && (
-              <div className="flex justify-between text-danger">
-                <span>الخصم</span>
-                <span className="numeric">- {formatMoney(getTotalDiscount())}</span>
-              </div>
+               <div className="flex justify-between text-danger">
+                 <span>الخصم</span>
+                 <span className="numeric">- {formatMoney(getTotalDiscount())}</span>
+               </div>
             )}
             <div className="flex justify-between pt-2 border-t border-border border-dashed text-lg font-bold">
               <span>الإجمالي</span>
-              <span className="numeric text-accent">{formatMoney(getTotal())}</span>
+              <span className="numeric text-accent" style={{ fontFamily: 'Inter', fontSize: '20px' }}>{formatMoney(getTotal())}</span>
             </div>
           </div>
 
           <button
             onClick={handleCompleteSale}
             disabled={items.length === 0}
-            className="w-full h-[var(--btn-height)] bg-accent text-white font-bold rounded-lg disabled:opacity-50 disabled:bg-muted disabled:text-text-secondary hover:bg-accent-hover transition-colors shadow-sm"
+            className="w-full h-16 bg-[#CF694A] text-white rounded-lg disabled:opacity-50 disabled:bg-muted disabled:text-text-secondary hover:opacity-90 transition-opacity shadow-sm"
+            style={{ fontFamily: 'Tajawal, sans-serif', fontSize: '18px', fontWeight: 'bold' }}
           >
             إتمام البيع
           </button>
@@ -184,31 +166,6 @@ export function CartSidebar() {
           clearCart();
         }}
       />
-      {/* Save Cart Dialog */}
-      <Dialog isOpen={isSaveDialogOpen} onClose={() => setIsSaveDialogOpen(false)} title="حفظ السلة مؤقتاً">
-        <label className="block text-sm font-medium mb-1">اسم السلة</label>
-        <input 
-          type="text" 
-          value={cartNameInput}
-          onChange={(e) => setCartNameInput(e.target.value)}
-          maxLength={30}
-          className="w-full h-11 px-3 rounded-xl border border-border focus:border-accent bg-background outline-none mb-6"
-        />
-        <div className="flex gap-3">
-          <button 
-            onClick={handleSaveCart}
-            className="flex-1 h-11 bg-accent text-white font-bold rounded-lg"
-          >
-            حفظ
-          </button>
-          <button 
-            onClick={() => setIsSaveDialogOpen(false)}
-            className="flex-1 h-11 bg-surface border border-border rounded-lg"
-          >
-            إلغاء
-          </button>
-        </div>
-      </Dialog>
     </>
   );
 }
