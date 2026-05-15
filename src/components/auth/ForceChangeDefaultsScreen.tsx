@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { hashCode } from '@/lib/auth';
 import { set } from 'idb-keyval';
 import { Shield, Key } from 'lucide-react';
@@ -14,12 +14,26 @@ export function ForceChangeDefaultsScreen() {
   const [error, setError] = useState('');
   const [isConfirming, setIsConfirming] = useState(false);
 
+  useEffect(() => {
+    if (newCode.length === 4 && !isConfirming) {
+      handleNext();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newCode]);
+
+  useEffect(() => {
+    if (confirmCode.length === 4 && isConfirming) {
+      handleNext();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmCode]);
+
   const handleNumber = (num: string) => {
     setError('');
     if (!isConfirming) {
-      if (newCode.length < 4) setNewCode(newCode + num);
+      if (newCode.length < 4) setNewCode(prev => prev + num);
     } else {
-      if (confirmCode.length < 4) setConfirmCode(confirmCode + num);
+      if (confirmCode.length < 4) setConfirmCode(prev => prev + num);
     }
   };
 
