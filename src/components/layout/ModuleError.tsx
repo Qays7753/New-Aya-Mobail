@@ -20,7 +20,7 @@ export function ModuleError({ error, resetErrorBoundary }: { error: Error; reset
         </p>
 
         {error && (
-          <div className="w-full bg-gray-50 p-4 rounded-xl text-left font-mono text-xs text-gray-600 overflow-x-auto mb-8 whitespace-pre-wrap shrink-0 max-h-32 overflow-y-auto" dir="ltr">
+          <div className="w-full bg-gray-50 p-4 rounded-xl text-start font-mono text-xs text-gray-600 overflow-x-auto mb-8 whitespace-pre-wrap shrink-0 max-h-32 overflow-y-auto" dir="ltr">
             {error.message}
           </div>
         )}

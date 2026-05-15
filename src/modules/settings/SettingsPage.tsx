@@ -229,7 +229,7 @@ export default function SettingsPage() {
                       dir="ltr"
                       value={storePhone}
                       onChange={(e) => setStoreNamePhone(e.target.value)}
-                      className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent text-start text-left"
+                      className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent text-start"
                     />
                   </div>
                   <div>

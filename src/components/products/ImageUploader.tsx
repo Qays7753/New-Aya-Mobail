@@ -53,7 +53,7 @@ export function ImageUploader({ initialImageBlobUrl, onImageChange }: ImageUploa
           <button
             type="button"
             onClick={handleRemove}
-            className="absolute bottom-2 right-2 p-2 bg-white/90 text-danger rounded-full shadow hover:bg-white transition-colors"
+            className="absolute bottom-2 end-2 p-2 bg-white/90 text-danger rounded-full shadow hover:bg-white transition-colors"
           >
             <Trash2 className="w-4 h-4" />
           </button>

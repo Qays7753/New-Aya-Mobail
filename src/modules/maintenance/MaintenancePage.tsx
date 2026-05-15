@@ -210,18 +210,16 @@ export default function MaintenancePage() {
                           <PackageCheck className="w-3 h-3" /> تسليم للعميل
                         </button>
                       )}
-                      {job.status === 'new' && (
-                        <button 
-                          onClick={() => {
-                            requireAdminAction(() => {
-                               updateStatusMutation.mutate({ id: job.id, status: 'cancelled' });
-                            });
-                          }}
-                          className="px-3 py-1.5 bg-danger/10 text-danger rounded-lg font-bold text-xs flex items-center gap-1"
-                        >
-                          إلغاء
-                        </button>
-                      )}
+                      <button 
+                        onClick={() => {
+                          requireAdminAction(() => {
+                             updateStatusMutation.mutate({ id: job.id, status: 'cancelled' });
+                          });
+                        }}
+                        className="px-3 py-1.5 bg-danger/10 text-danger rounded-lg font-bold text-xs flex items-center gap-1"
+                      >
+                        إلغاء
+                      </button>
                     </div>
                   </div>
                 </div>
