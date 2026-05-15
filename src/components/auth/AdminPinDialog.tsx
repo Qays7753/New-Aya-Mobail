@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { verifyCode, getLockoutSecondsRemaining, recordFailedAttempt } from '@/lib/auth';
 import { get } from 'idb-keyval';
-import { Shield, Delete, Clock, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { Shield, Clock, X } from 'lucide-react';
+import { toastSuccess, toastError } from '@/components/ui/toast';
+import { NumPad } from '@/components/ui/NumPad';
 
 interface AdminPinDialogProps {
   isOpen: boolean;
@@ -41,12 +42,12 @@ export function AdminPinDialog({ isOpen, onClose, onSuccess, title, description 
       if (stored && await verifyCode(pin, stored)) {
         grantAdminAccess();
         onSuccess();
-        toast.success("تم تأكيد الصلاحية");
+        toastSuccess("تم تأكيد الصلاحية");
         setPin('');
       } else {
         await recordFailedAttempt('admin');
         setPin('');
-        toast.error("الرمز غير صحيح");
+        toastError("الرمز غير صحيح");
         const remaining = await getLockoutSecondsRemaining('admin');
         setLockoutSecs(remaining);
       }
@@ -81,9 +82,19 @@ export function AdminPinDialog({ isOpen, onClose, onSuccess, title, description 
         </div>
         
         <h2 className="text-xl font-bold mb-1">{title || 'صلاحيات المدير'}</h2>
-        <p className="text-sm text-text-secondary text-center mb-6">
+        <p className="text-sm text-text-secondary text-center">
           {description || 'الرجاء إدخال رمز المدير (Admin PIN) للمتابعة'}
         </p>
+        <button 
+          onClick={async () => {
+            if (confirm("هل أنت متأكد من استعادة الأرقام السرية الافتراضية؟")) {
+              (window as any).resetPins();
+            }
+          }}
+          className="text-xs text-text-secondary mt-1 mb-6 underline"
+        >
+          نسيت كلمة المرور؟
+        </button>
 
         {lockoutSecs > 0 ? (
           <div className="w-full bg-danger/10 text-danger rounded-xl p-4 flex flex-col items-center mb-6">
@@ -107,38 +118,12 @@ export function AdminPinDialog({ isOpen, onClose, onSuccess, title, description 
               ))}
             </div>
 
-            <div className="grid grid-cols-3 gap-x-6 gap-y-4 w-full" dir="ltr">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                <button
-                  key={num}
-                  onClick={() => handleKeyPress(num)}
-                  className="h-14 bg-muted rounded-full shadow-sm text-xl font-bold hover:bg-border active:scale-95 transition-all outline-none"
-                >
-                  {num}
-                </button>
-              ))}
-              <div className="h-14"></div>
-              <button
-                onClick={() => handleKeyPress(0)}
-                className="h-14 bg-muted rounded-full shadow-sm text-xl font-bold hover:bg-border active:scale-95 transition-all outline-none"
-              >
-                0
-              </button>
-              <button
-                onClick={handleBackspace}
-                className="h-14 bg-muted rounded-full shadow-sm text-text-secondary hover:bg-border active:scale-95 transition-all flex items-center justify-center outline-none"
-              >
-                <Delete className="w-6 h-6" />
-              </button>
-            </div>
-
-            <button
-              onClick={handleSubmit}
-              disabled={pin.length < 4}
-              className="mt-6 w-full h-12 bg-accent text-white font-bold rounded-xl disabled:opacity-50 hover:bg-accent-hover active:scale-95 transition-all"
-            >
-              تأكيد الرمز
-            </button>
+            <NumPad
+              onDigit={(num) => handleKeyPress(Number(num))}
+              onClear={handleBackspace}
+              onSubmit={handleSubmit}
+              submitDisabled={pin.length < 4}
+            />
           </>
         )}
       </div>

@@ -6,18 +6,34 @@ import { useCartStore } from '@/stores/cart.store';
 
 export async function completeSale(data: {
   cartItems: ReturnType<typeof useCartStore.getState>['items'];
+  customerId?: string;
   subtotal: number;
   totalDiscount: number;
   totalAmount: number;
   payments: { accountId: string; amount: number }[];
 }) {
-  const { cartItems, subtotal, totalDiscount, totalAmount, payments } = data;
+  const { cartItems, customerId, subtotal, totalDiscount, totalAmount, payments } = data;
   
   const invoiceId = nanoid();
   const today = format(new Date(), 'yyyy-MM-dd');
   const now = new Date().toISOString();
   
   const paidAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+
+  // Read customer data if specified
+  let customer: any = null;
+  if (customerId) {
+    const custResult = await dbClient.query("SELECT name, phone FROM customers WHERE id = ?", [customerId]);
+    if (custResult.length > 0) customer = custResult[0];
+  }
+
+  // Pre-fetch all accounts for names
+  const accountIds = payments.map(p => p.accountId);
+  let accountMap = new Map<string, string>();
+  if (accountIds.length > 0) {
+    const accounts = await dbClient.query(`SELECT id, name FROM accounts WHERE id IN (${accountIds.map(() => '?').join(',')})`, accountIds);
+    accounts.forEach(a => accountMap.set(a.id, a.name));
+  }
 
   // Prepare a batch of SQL statements for the transaction
   const stmts: {sql: string, params: any[]}[] = [];
@@ -39,10 +55,10 @@ export async function completeSale(data: {
   // 2. Create invoice
   stmts.push({
     sql: `
-      INSERT INTO invoices (id, invoice_number, invoice_date, subtotal, discount_amount, total_amount, paid_amount, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO invoices (id, invoice_number, invoice_date, customer_id, customer_name, customer_phone, subtotal, discount_amount, total_amount, paid_amount, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-    params: [invoiceId, invoiceNumber, today, subtotal, totalDiscount, totalAmount, paidAmount, now]
+    params: [invoiceId, invoiceNumber, today, customerId || null, customer?.name ?? null, customer?.phone ?? null, subtotal, totalDiscount, totalAmount, paidAmount, now]
   });
   
   // 3. Create items and update stock
@@ -90,10 +106,10 @@ export async function completeSale(data: {
     
     stmts.push({
       sql: `
-        INSERT INTO ledger_entries (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      params: [nanoid(), today, payment.accountId, 'credit', payment.amount, 'invoice', invoiceId, `مبيعات فاتورة رقم ${invoiceNumber}`, now]
+      params: [nanoid(), today, payment.accountId, accountMap.get(payment.accountId) ?? null, 'credit', payment.amount, 'invoice', invoiceId, `مبيعات فاتورة رقم ${invoiceNumber}`, now]
     });
   }
   

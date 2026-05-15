@@ -276,7 +276,6 @@ export function SuccessDialog({
         isOpen={true} 
         onClose={onNewSale} 
         invoice={invoiceData} 
-        storeName={localStorage.getItem('storeName') || 'متجرنا'}
       />
     );
   }

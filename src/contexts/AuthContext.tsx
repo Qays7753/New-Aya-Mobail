@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { isDailyLockRequired, ensureDefaults } from '@/lib/auth';
+import { isDailyLockRequired, ensureDefaults, isDefaultDailyLock, isDefaultAdminPin } from '@/lib/auth';
 import { useCartStore } from '@/stores/cart.store';
 
 interface AuthContextType {
   isDayUnlocked: boolean;
   isAdminPinValidUntil: number | null;
+  needsDefaultChange: boolean;
+  recheckDefaults: () => Promise<void>;
   checkLockStatus: () => Promise<void>;
   markDayUnlocked: () => void;
   grantAdminAccess: () => void;
@@ -19,6 +21,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isDayUnlocked, setIsDayUnlocked] = useState(false);
   const [isAdminPinValidUntil, setIsAdminPinValidUntil] = useState<number | null>(null);
   const [pendingAdminAction, setPendingAdminAction] = useState<(() => void) | null>(null);
+  const [needsDefaultChange, setNeedsDefaultChange] = useState<boolean>(false);
+  const [isReady, setIsReady] = useState(false);
   
   const cartItems = useCartStore(state => state.items); 
 
@@ -31,8 +35,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsDayUnlocked(!required);
   };
 
+  const recheckDefaults = async () => {
+    await ensureDefaults();
+    const [defDaily, defAdmin] = await Promise.all([isDefaultDailyLock(), isDefaultAdminPin()]);
+    setNeedsDefaultChange(defDaily || defAdmin);
+    setIsReady(true);
+  };
+
   useEffect(() => {
-    ensureDefaults().then(() => checkLockStatus());
+    recheckDefaults().then(() => checkLockStatus());
 
     const interval = setInterval(() => {
       checkLockStatus();
@@ -59,10 +70,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPendingAdminAction(null);
   };
 
+  if (!isReady) {
+    return null; // or loading
+  }
+
   return (
     <AuthContext.Provider value={{
       isDayUnlocked,
       isAdminPinValidUntil,
+      needsDefaultChange,
+      recheckDefaults,
       checkLockStatus,
       markDayUnlocked,
       grantAdminAccess,

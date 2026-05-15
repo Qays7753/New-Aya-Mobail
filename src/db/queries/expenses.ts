@@ -116,13 +116,28 @@ export async function addExpense(data: {
   return id;
 }
 
-export async function getRecentExpenses(limit = 50): Promise<Expense[]> {
-  const query = `
-    SELECT *
-    FROM expenses
-    ORDER BY created_at DESC 
-    LIMIT ?
-  `;
-  const results = await dbClient.query(query, [limit]);
+export async function getFilteredExpenses(startDate?: string, endDate?: string, limit: number | null = 100): Promise<Expense[]> {
+  let query = `SELECT * FROM expenses`;
+  const params: any[] = [];
+  
+  if (startDate && endDate) {
+    query += ` WHERE expense_date BETWEEN ? AND ?`;
+    params.push(startDate, endDate);
+  } else if (startDate) {
+    query += ` WHERE expense_date >= ?`;
+    params.push(startDate);
+  } else if (endDate) {
+    query += ` WHERE expense_date <= ?`;
+    params.push(endDate);
+  }
+  
+  query += ` ORDER BY created_at DESC`;
+  
+  if (limit !== null) {
+    query += ` LIMIT ?`;
+    params.push(limit);
+  }
+  
+  const results = await dbClient.query(query, params);
   return results as Expense[];
 }

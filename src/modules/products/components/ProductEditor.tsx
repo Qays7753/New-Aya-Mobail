@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Product, addProduct, updateProduct, toggleProductActive } from '@/db/queries/products';
-import { X, Save, Trash2, Power } from 'lucide-react';
+import { X, Save, Trash2, Power, Box } from 'lucide-react';
 import { formatMoney, parseMoney } from '@/lib/money';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { IconPicker } from '@/components/products/IconPicker';
+import { ImageUploader } from '@/components/products/ImageUploader';
+import { saveProductImage, loadProductImage, deleteProductImage } from '@/lib/imageStorage';
 
 interface ProductEditorProps {
   product: Product | null;
@@ -37,6 +40,11 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
     is_quick_add: false,
     notes: ''
   });
+  
+  const [icon, setIcon] = useState('Box');
+  const [imageBlob, setImageBlob] = useState<Blob | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [imageChanged, setImageChanged] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -52,6 +60,14 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
           is_quick_add: product.is_quick_add,
           notes: product.notes || ''
         });
+        setIcon(product.icon || 'Box');
+        if (product.image_path) {
+          loadProductImage(product.image_path).then(setPreviewUrl);
+        } else {
+          setPreviewUrl(null);
+        }
+        setImageBlob(null);
+        setImageChanged(false);
       } else {
         setFormData({
           name: '',
@@ -64,6 +80,10 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
           is_quick_add: false,
           notes: ''
         });
+        setIcon('Box');
+        setPreviewUrl(null);
+        setImageBlob(null);
+        setImageChanged(false);
       }
     }
   }, [isOpen, product]);
@@ -80,12 +100,23 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
         track_stock: formData.track_stock,
         is_quick_add: formData.is_quick_add,
         notes: formData.notes || null,
+        icon: icon,
       };
 
+      let savedId = '';
       if (isEditing && product) {
         await updateProduct(product.id, dataToSave);
+        savedId = product.id;
       } else {
-        await addProduct(dataToSave);
+        savedId = await addProduct(dataToSave);
+      }
+
+      if (imageChanged && imageBlob) {
+        const path = await saveProductImage(savedId, imageBlob);
+        await updateProduct(savedId, { image_path: path });
+      } else if (imageChanged && !imageBlob && isEditing && product?.image_path) {
+        await deleteProductImage(savedId);
+        await updateProduct(savedId, { image_path: null });
       }
     },
     onSuccess: () => {
@@ -158,6 +189,23 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
                 {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">الرمز (أيقونة المنتج)</label>
+            <IconPicker category={formData.category} selectedIcon={icon} onChange={setIcon} />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">صورة المنتج</label>
+            <ImageUploader 
+              initialImageBlobUrl={previewUrl || undefined}
+              onImageChange={(blob) => {
+                setImageBlob(blob);
+                setImageChanged(true);
+                if (!blob) setPreviewUrl(null);
+              }}
+            />
           </div>
 
           <div>

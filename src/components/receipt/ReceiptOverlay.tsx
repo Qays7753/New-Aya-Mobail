@@ -2,15 +2,17 @@ import React from 'react';
 import { X } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { format } from 'date-fns';
+import { useSettingsStore } from '@/stores/settings.store';
 
 interface ReceiptOverlayProps {
   isOpen: boolean;
   onClose: () => void;
   invoice: any;
-  storeName?: string;
 }
 
-export function ReceiptOverlay({ isOpen, onClose, invoice, storeName = 'متجرنا' }: ReceiptOverlayProps) {
+export function ReceiptOverlay({ isOpen, onClose, invoice }: ReceiptOverlayProps) {
+  const { settings } = useSettingsStore();
+
   if (!isOpen || !invoice) return null;
 
   const formattedDate = format(new Date(invoice.created_at || new Date()), 'yyyy/MM/dd HH:mm');
@@ -30,12 +32,18 @@ export function ReceiptOverlay({ isOpen, onClose, invoice, storeName = 'متجر
       <div className="flex-1 p-6 flex flex-col items-center">
         <div className="w-full max-w-sm border-2 border-dashed border-border p-6 rounded-2xl bg-surface">
           <div className="text-center mb-6 border-b border-dashed border-border pb-6">
-            <h1 className="text-2xl font-bold mb-2">{storeName}</h1>
+            <h1 className="text-3xl font-bold mb-2">{settings.storeName || 'متجرنا'}</h1>
+            {settings.receiptHeader && (
+              <div className="text-sm font-medium mb-4 whitespace-pre-wrap leading-relaxed">
+                {settings.receiptHeader}
+              </div>
+            )}
             <div className="text-sm text-text-secondary space-y-1">
+              {settings.storePhone && <div>الهاتف: <span dir="ltr">{settings.storePhone}</span></div>}
               <div>رقم الفاتورة: {invoice.invoice_number}</div>
               <div>التاريخ: {formattedDate}</div>
               {invoice.customer_name && <div>العميل: {invoice.customer_name}</div>}
-              {invoice.customer_phone && <div>رقم العميل: {invoice.customer_phone}</div>}
+              {invoice.customer_phone && <div>رقم العميل: <span dir="ltr">{invoice.customer_phone}</span></div>}
             </div>
           </div>
 
@@ -79,8 +87,8 @@ export function ReceiptOverlay({ isOpen, onClose, invoice, storeName = 'متجر
             </div>
           </div>
 
-          <div className="mt-8 text-center text-sm font-bold text-text-secondary border-t border-dashed border-border pt-6">
-            شكراً لزيارتكم!
+          <div className="mt-8 text-center text-sm font-bold text-text-secondary border-t border-dashed border-border pt-6 whitespace-pre-wrap leading-relaxed">
+            {settings.receiptFooter || 'شكراً لزيارتكم!'}
           </div>
         </div>
         
