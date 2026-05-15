@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAllProducts, Product } from '@/db/queries/products';
-import { Plus, Search, Filter, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Search, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { ProductEditor } from './components/ProductEditor';

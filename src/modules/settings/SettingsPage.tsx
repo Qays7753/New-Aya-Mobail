@@ -1,14 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Settings, Shield, HardDrive, Download, Upload, AlertTriangle, Key, Store, Receipt } from 'lucide-react';
-import { dbClient } from '@/db/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { exportDb, importDb } from '@/lib/backup';
 import { changeDailyLock, changeAdminPin } from '@/lib/auth';
 import { useSettingsStore } from '@/stores/settings.store';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'general' | 'pos' | 'security' | 'backup'>('general');

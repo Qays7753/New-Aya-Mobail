@@ -2,15 +2,14 @@ import { useState, useEffect } from 'react';
 import { useCartStore, CartItem } from '@/stores/cart.store';
 import { useSavedCartsStore } from '@/stores/savedCarts.store';
 import { formatMoney } from '@/lib/money';
-import { Plus, Minus, Trash2, ShoppingCart as ShoppingCartIcon, Save, Clock } from 'lucide-react';
+import { Plus, Minus, Trash2, ShoppingCart as ShoppingCartIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PaymentDialog, SuccessDialog } from './PaymentDialog';
-import { Dialog } from '@/components/ui/Dialog';
 import { toast } from 'sonner';
 
 export function CartSidebar() {
   const { items, removeItem, updateQuantity, clearCart, getSubtotal, getTotalDiscount, getTotal, pulseTrigger } = useCartStore();
-  const { savedCarts, saveCart } = useSavedCartsStore();
+  useSavedCartsStore();
   const cartStore = useCartStore(); // to pass to restoring if needed
   
   const [pulse, setPulse] = useState(false);

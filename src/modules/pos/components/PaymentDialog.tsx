@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useCartStore } from '@/stores/cart.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getActiveAccounts, Account } from '@/db/queries/accounts';
+import { getActiveAccounts } from '@/db/queries/accounts';
 import { completeSale, getInvoiceWithItems } from '@/db/queries/sales';
-import { formatMoney, parseMoney, subMoney } from '@/lib/money';
+import { formatMoney, parseMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { X, CheckCircle, FileText, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,7 +22,7 @@ interface PaymentRow {
 }
 
 export function PaymentDialog({ isOpen, onClose, onSuccess }: PaymentDialogProps) {
-  const { items, getSubtotal, getTotalDiscount, getTotal, clearCart } = useCartStore();
+  const { items, getSubtotal, getTotalDiscount, getTotal } = useCartStore();
   const total = getTotal();
   
   const [payments, setPayments] = useState<PaymentRow[]>([]);
@@ -140,7 +140,7 @@ export function PaymentDialog({ isOpen, onClose, onSuccess }: PaymentDialogProps
               </button>
             </div>
             
-            {payments.map((p, index) => (
+            {payments.map((p) => (
               <div key={p.id} className="flex gap-2 items-center bg-background rounded-xl border border-border p-2">
                 <select 
                   value={p.accountId}
@@ -234,7 +234,7 @@ export function SuccessDialog({
   invoiceId,
   invoiceNumber, 
   change,
-  onClose,
+  onClose: _onClose,
   onNewSale 
 }: { 
   isOpen: boolean; 

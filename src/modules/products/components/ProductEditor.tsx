@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Product, addProduct, updateProduct, toggleProductActive } from '@/db/queries/products';
-import { X, Save, Trash2, Power, Box } from 'lucide-react';
-import { formatMoney, parseMoney } from '@/lib/money';
+import { X, Save, Power } from 'lucide-react';
+import { parseMoney } from '@/lib/money';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconPicker } from '@/components/products/IconPicker';

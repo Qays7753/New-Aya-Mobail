@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { hashCode } from '@/lib/auth';
 import { set } from 'idb-keyval';
-import { Shield, Key, ArrowRight } from 'lucide-react';
+import { Shield, Key } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { NumPad } from '@/components/ui/NumPad';

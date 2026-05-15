@@ -1,4 +1,3 @@
-import React from 'react';
 import { X } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { format } from 'date-fns';

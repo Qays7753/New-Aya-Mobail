@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getExpenseCategories, addExpenseCategory, updateExpenseCategory, ExpenseCategory } from '@/db/queries/expenses';
-import { Plus, CheckCircle, Trash2, Edit2, X, AlertCircle } from 'lucide-react';
+import { Plus, CheckCircle, Edit2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 

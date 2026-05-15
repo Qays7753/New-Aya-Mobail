@@ -7,7 +7,7 @@ import { Dialog } from '@/components/ui/Dialog';
 
 export function SavedCartsTabs() {
   const { savedCarts, deleteCart } = useSavedCartsStore();
-  const { activeCartId, switchToCart, saveAsNewCart, items } = useCartStore();
+  const { activeCartId, switchToCart, items } = useCartStore();
   
   const [cartToDelete, setCartToDelete] = useState<string | null>(null);
 

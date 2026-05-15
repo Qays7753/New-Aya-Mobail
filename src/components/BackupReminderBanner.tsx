@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Share2, AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import { getBackupInfo, performBackup } from '@/lib/backup';
 import { toast } from 'sonner';
 

@@ -6,7 +6,7 @@ import { getActiveAccounts } from '@/db/queries/accounts';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatMoney, parseMoney } from '@/lib/money';
 import { format } from 'date-fns';
-import { FileText, ArrowRightLeft, Search, CheckCircle, XCircle, X, Eye } from 'lucide-react';
+import { FileText, ArrowRightLeft, Search, XCircle, X, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { ReceiptOverlay } from '@/components/receipt/ReceiptOverlay';
 

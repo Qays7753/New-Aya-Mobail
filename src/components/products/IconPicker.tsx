@@ -1,4 +1,3 @@
-import React from 'react';
 import * as LucideIcons from 'lucide-react';
 import { cn } from '@/lib/utils';
 
