@@ -11,13 +11,13 @@ import { loadProductImage } from '@/lib/imageStorage';
 import { useDebounce } from '@/hooks/useDebounce';
 
 const CATEGORIES = [
-  { id: 'all', label: 'الكل' },
-  { id: 'device', label: 'أجهزة' },
-  { id: 'accessory', label: 'إكسسوارات' },
-  { id: 'sim', label: 'شرائح' },
-  { id: 'package', label: 'باقات' },
-  { id: 'service_general', label: 'خدمات عامة' },
-  { id: 'service_repair', label: 'خدمات صيانة' },
+  { id: 'all',            label: 'الكل',          color: '#CF694A' },
+  { id: 'device',         label: 'أجهزة',          color: '#2563EB' },
+  { id: 'sim',            label: 'شرائح',          color: '#7C3AED' },
+  { id: 'service_general',label: 'خدمات عامة',     color: '#0D9488' },
+  { id: 'service_repair', label: 'خدمات صيانة',    color: '#EA7317' },
+  { id: 'accessory',      label: 'إكسسوار',        color: '#D9A404' },
+  { id: 'package',        label: 'باقات',          color: '#DB2777' },
 ];
 
 export function ProductGrid() {
@@ -74,21 +74,30 @@ export function ProductGrid() {
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary" />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setCategory(cat.id)}
-              className={cn(
-                "px-4 py-2 rounded-full whitespace-nowrap text-sm font-medium transition-colors border",
-                category === cat.id
-                  ? "bg-text-primary text-white border-transparent"
-                  : "bg-surface border-border text-text-secondary hover:border-accent hover:text-text-primary"
-              )}
-            >
-              {cat.label}
-            </button>
-          ))}
+        <div className="flex overflow-x-auto no-scrollbar">
+          {CATEGORIES.map((cat) => {
+            const isActive = category === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setCategory(cat.id)}
+                style={{
+                  backgroundColor: cat.color,
+                  opacity: isActive ? 1 : 0.55,
+                  boxShadow: isActive ? '0 2px 8px rgba(0,0,0,0.18)' : 'none',
+                  borderBottom: isActive ? '3px solid #fff' : '3px solid transparent',
+                  touchAction: 'manipulation',
+                  userSelect: 'none',
+                }}
+                className="flex-1 min-w-[80px] h-[60px] flex items-center justify-center whitespace-nowrap text-white font-bold rounded-t-lg transition-all"
+                dir="rtl"
+              >
+                <span style={{ fontFamily: 'Tajawal, sans-serif', fontSize: '15px', fontWeight: 700 }}>
+                  {cat.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
