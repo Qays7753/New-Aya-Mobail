@@ -34,15 +34,17 @@ export function ProductGrid() {
 
   const parentRef = useRef<HTMLDivElement>(null);
   
-  // Calculate columns based on width
+  // Calculate columns based on container width
   const [columns, setColumns] = useState(2);
-  
+
   useEffect(() => {
     if (!parentRef.current) return;
     const observer = new ResizeObserver(entries => {
-      for (let entry of entries) {
-        const width = entry.contentRect.width;
-        if (width >= 1024) setColumns(3); // lg
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        if (w >= 1280) setColumns(5);
+        else if (w >= 1024) setColumns(4);
+        else if (w >= 768) setColumns(3);
         else setColumns(2);
       }
     });
@@ -55,7 +57,7 @@ export function ProductGrid() {
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 216, // estimated height of card + gap
+    estimateSize: () => 178, // 168px card + 10px gap
     overscan: 5,
   });
 
@@ -133,9 +135,9 @@ export function ProductGrid() {
                     width: '100%',
                     height: `${virtualRow.size}px`,
                     transform: `translateY(${virtualRow.start}px)`,
-                    paddingBottom: '12px', // gap substitute
+                    paddingBottom: '10px',
                   }}
-                  className="flex gap-3"
+                  className="flex gap-[10px]"
                 >
                   {rowProducts.map(product => (
                     <div key={product.id} style={{ width: `${100 / columns}%` }} className="h-full">
@@ -206,17 +208,19 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void; 
   };
 
   return (
-    <div 
+    <div
       onClick={handleClick}
+      style={{ touchAction: 'manipulation', userSelect: 'none', height: '168px' }}
       className={cn(
-        "bg-surface border border-border rounded-xl p-3 flex flex-col justify-between select-none group h-[204px] relative overflow-hidden",
+        "bg-surface border border-border rounded-xl flex flex-col select-none relative overflow-hidden",
         isOutOfStock ? "opacity-60 grayscale cursor-not-allowed" : "cursor-pointer hover:border-accent",
         isAnimating && "scale-[0.96] transition-transform duration-100",
         !isAnimating && "transition-all"
       )}
     >
+      {/* Float +1 animations */}
       {floatPluses.map(fp => (
-        <span 
+        <span
           key={fp.id}
           className="absolute z-10 text-[#CF694A] font-bold text-xl pointer-events-none animate-float-up"
           style={{ left: fp.x, top: fp.y, fontFamily: 'Inter' }}
@@ -224,43 +228,48 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void; 
           +1
         </span>
       ))}
-      <div className="flex flex-col gap-2">
-        <div className="h-[100px] w-full rounded-md overflow-hidden bg-muted relative">
-          {imageUrl ? (
-            <img src={imageUrl} alt={product.name} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: color.bg, color: color.text }}>
-              <IconComponent size={56} opacity={0.8} />
-            </div>
-          )}
-        </div>
-        <h3 className="font-semibold text-sm leading-tight line-clamp-2 md:text-base">{product.name}</h3>
-      </div>
-      
-      <div className="mt-auto pt-2">
-        {product.track_stock && (
-             <div className="text-[11px] mb-1">
-                {isOutOfStock ? (
-                  <span className="text-danger font-medium flex items-center gap-1">
-                     <span className="w-1.5 h-1.5 rounded-full bg-danger"></span> نفذت الكمية
-                  </span>
-                ) : isLowStock ? (
-                  <span className="text-warning font-medium flex items-center gap-1">
-                     <span className="w-1.5 h-1.5 rounded-full bg-warning"></span> {product.stock_qty} متبقي
-                  </span>
-                ) : (
-                   <span className="text-text-secondary">المتوفر: {product.stock_qty}</span>
-                )}
-             </div>
+
+      {/* Image / Icon area — 88px */}
+      <div className="h-[88px] w-full shrink-0 overflow-hidden rounded-t-xl">
+        {imageUrl ? (
+          <img src={imageUrl} alt={product.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: color.bg, color: color.text }}>
+            <IconComponent size={40} opacity={0.85} />
+          </div>
         )}
+      </div>
+
+      {/* Text area */}
+      <div className="flex flex-col justify-between flex-1 px-2 pt-1 pb-2">
+        <h3
+          className="line-clamp-2 leading-tight text-text-primary"
+          style={{ fontFamily: 'Tajawal, sans-serif', fontSize: '13px', fontWeight: 600 }}
+        >
+          {product.name}
+        </h3>
+
         <div className="flex items-end justify-between">
-          <span className="numeric text-lg text-accent">{formatMoney(product.sale_price)}</span>
-          <button 
-            disabled={isOutOfStock}
-            className="w-10 h-10 rounded-lg flex items-center justify-center bg-accent-light text-accent group-hover:bg-accent group-hover:text-white transition-colors"
+          {/* Low-stock badge */}
+          <div className="flex flex-col gap-0.5">
+            {product.track_stock && isOutOfStock && (
+              <span className="flex items-center gap-0.5" style={{ fontSize: '10px', color: 'var(--color-danger)' }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-danger inline-block" />نفذت
+              </span>
+            )}
+            {product.track_stock && isLowStock && (
+              <span className="flex items-center gap-0.5" style={{ fontSize: '10px', color: 'var(--color-warning)' }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-warning inline-block" />{product.stock_qty}
+              </span>
+            )}
+          </div>
+          {/* Price */}
+          <span
+            className="numeric"
+            style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 700, color: '#CF694A' }}
           >
-            <LucideIcons.Plus className="w-5 h-5"/>
-          </button>
+            {formatMoney(product.sale_price)}
+          </span>
         </div>
       </div>
     </div>
