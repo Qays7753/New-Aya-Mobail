@@ -106,7 +106,9 @@ function NewCountTab() {
     onSuccess: () => {
       toast.success('تم الجرد وتحديث الأرصدة بنجاح');
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['all-products'] });
       queryClient.invalidateQueries({ queryKey: ['inventory-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
       setActualCounts({});
     },
     onError: () => {

@@ -7,12 +7,18 @@ import removeDebtsSql from './002_remove_debts.sql?raw';
 import snapshotsSql from './003_snapshots.sql?raw';
 // @ts-ignore
 import productsMediaSql from './004_products_media.sql?raw';
+// @ts-ignore
+import reportsCostingSql from './005_reports_costing.sql?raw';
+// @ts-ignore
+import auditLogSql from './006_audit_log.sql?raw';
 
 const migrations = [
   { version: 1, sql: initSql },
   { version: 2, sql: removeDebtsSql },
   { version: 3, sql: snapshotsSql },
   { version: 4, sql: productsMediaSql },
+  { version: 5, sql: reportsCostingSql },
+  { version: 6, sql: auditLogSql },
 ];
 
 export async function runMigrations() {

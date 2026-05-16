@@ -64,6 +64,8 @@ export default function ExpensesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses-filtered', startDate, endDate] });
       queryClient.invalidateQueries({ queryKey: ['active-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['report'] });
       toast.success('تم تسجيل المصروف بنجاح');
       setIsAddMode(false);
       setAmountInput('');
@@ -175,7 +177,7 @@ export default function ExpensesPage() {
                       className="w-full h-12 pe-12 ps-4 rounded-xl border border-border bg-background focus:border-accent focus:ring-1 outline-none text-xl font-bold numeric"
                       placeholder="0"
                     />
-                    <span className="absolute start-4 top-1/2 -translate-y-1/2 text-text-secondary text-sm font-medium">د.ع</span>
+                    <span className="absolute start-4 top-1/2 -translate-y-1/2 text-text-secondary text-sm font-medium">د.أ</span>
                   </div>
                 </div>
 

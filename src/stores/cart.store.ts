@@ -10,8 +10,8 @@ export interface CartItem {
   product: Product;
   quantity: number;
   discountType: 'amount' | 'percent';
-  discountValue: number; // in fils if amount, percentage if percent
-  overridePrice?: number; // override sale_price in fils for this invoice only
+  discountValue: number;
+  overridePrice?: number;
 }
 
 interface CartState {
@@ -20,8 +20,6 @@ interface CartState {
   globalDiscountType: 'amount' | 'percent';
   globalDiscountValue: number;
   pulseTrigger: number;
-  customerName: string;
-  customerPhone: string;
 
   addItem: (product: Product) => void;
   restoreItem: (item: CartItem) => void;
@@ -30,8 +28,6 @@ interface CartState {
   setItemDiscount: (cartItemId: string, type: 'amount' | 'percent', value: number) => void;
   setItemPrice: (cartItemId: string, priceInFils: number) => void;
   setGlobalDiscount: (type: 'amount' | 'percent', value: number) => void;
-  setCustomer: (name: string, phone: string) => void;
-  clearCustomer: () => void;
   clearCart: () => void;
   switchToCart: (savedCartId: string) => void;
   saveAsNewCart: (title: string) => void;
@@ -55,6 +51,20 @@ export function calculateItemLineTotal(item: CartItem): { subtotal: number; disc
   return { subtotal: sub, discountAmt: dAmt, total: subMoney(sub, dAmt) };
 }
 
+function safeSyncLater(getFn: () => CartState) {
+  setTimeout(() => {
+    try { getFn().syncToSavedCart(); } catch (_) {}
+  }, 0);
+}
+
+function haptic() {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(30);
+    }
+  } catch (_) {}
+}
+
 export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
@@ -63,19 +73,24 @@ export const useCartStore = create<CartState>()(
       globalDiscountType: 'amount',
       globalDiscountValue: 0,
       pulseTrigger: 0,
-      customerName: '',
-      customerPhone: '',
 
       syncToSavedCart: () => {
         const state = get();
         if (state.activeCartId !== 'default') {
-          useSavedCartsStore.getState().updateCart(state.activeCartId, state.items, state.globalDiscountType, state.globalDiscountValue);
+          try {
+            useSavedCartsStore.getState().updateCart(
+              state.activeCartId,
+              state.items,
+              state.globalDiscountType,
+              state.globalDiscountValue
+            );
+          } catch (_) {}
         }
       },
 
       switchToCart: (savedCartId: string) => {
         if (savedCartId === 'default') {
-          set({ activeCartId: 'default', items: [], globalDiscountType: 'amount', globalDiscountValue: 0, customerName: '', customerPhone: '' });
+          set({ activeCartId: 'default', items: [], globalDiscountType: 'amount', globalDiscountValue: 0 });
           return;
         }
         const savedCartsStore = useSavedCartsStore.getState();
@@ -100,8 +115,11 @@ export const useCartStore = create<CartState>()(
       },
 
       addItem: (product) => set((state) => {
+        haptic();
         const nextPulse = state.pulseTrigger + 1;
-        const existingIndex = state.items.findIndex(i => i.product.id === product.id && i.discountValue === 0 && !i.overridePrice);
+        const existingIndex = state.items.findIndex(
+          i => i.product.id === product.id && i.discountValue === 0 && !i.overridePrice
+        );
         let newItems;
         if (existingIndex >= 0) {
           newItems = [...state.items];
@@ -116,48 +134,59 @@ export const useCartStore = create<CartState>()(
           };
           newItems = [...state.items, newItem];
         }
-        setTimeout(() => get().syncToSavedCart(), 0);
+        safeSyncLater(get);
         return { items: newItems, pulseTrigger: nextPulse };
       }),
 
       restoreItem: (item) => set((state) => {
         const nextPulse = state.pulseTrigger + 1;
         const newItems = [...state.items, item];
-        setTimeout(() => get().syncToSavedCart(), 0);
+        safeSyncLater(get);
         return { items: newItems, pulseTrigger: nextPulse };
       }),
 
       removeItem: (cartItemId) => set((state) => {
-        setTimeout(() => get().syncToSavedCart(), 0);
+        safeSyncLater(get);
         return { items: state.items.filter(i => i.cartItemId !== cartItemId) };
       }),
 
       updateQuantity: (cartItemId, qty) => set((state) => {
-        setTimeout(() => get().syncToSavedCart(), 0);
-        return { items: state.items.map(i => i.cartItemId === cartItemId ? { ...i, quantity: Math.max(1, qty) } : i) };
+        safeSyncLater(get);
+        return {
+          items: state.items.map(i =>
+            i.cartItemId === cartItemId ? { ...i, quantity: Math.max(1, qty) } : i
+          )
+        };
       }),
 
       setItemDiscount: (cartItemId, type, value) => set((state) => {
-        setTimeout(() => get().syncToSavedCart(), 0);
-        return { items: state.items.map(i => i.cartItemId === cartItemId ? { ...i, discountType: type, discountValue: Math.max(0, value) } : i) };
+        safeSyncLater(get);
+        return {
+          items: state.items.map(i =>
+            i.cartItemId === cartItemId
+              ? { ...i, discountType: type, discountValue: Math.max(0, value) }
+              : i
+          )
+        };
       }),
 
       setItemPrice: (cartItemId, priceInFils) => set((state) => {
-        setTimeout(() => get().syncToSavedCart(), 0);
-        return { items: state.items.map(i => i.cartItemId === cartItemId ? { ...i, overridePrice: Math.max(0, priceInFils) } : i) };
+        safeSyncLater(get);
+        return {
+          items: state.items.map(i =>
+            i.cartItemId === cartItemId ? { ...i, overridePrice: Math.max(0, priceInFils) } : i
+          )
+        };
       }),
-
-      setCustomer: (name, phone) => set({ customerName: name, customerPhone: phone }),
-      clearCustomer: () => set({ customerName: '', customerPhone: '' }),
 
       setGlobalDiscount: (type, value) => {
         set({ globalDiscountType: type, globalDiscountValue: Math.max(0, value) });
-        get().syncToSavedCart();
+        try { get().syncToSavedCart(); } catch (_) {}
       },
 
       clearCart: () => {
-        set({ items: [], globalDiscountType: 'amount', globalDiscountValue: 0, customerName: '', customerPhone: '' });
-        get().syncToSavedCart();
+        set({ items: [], globalDiscountType: 'amount', globalDiscountValue: 0 });
+        try { get().syncToSavedCart(); } catch (_) {}
       },
 
       getSubtotal: () => {
@@ -170,8 +199,12 @@ export const useCartStore = create<CartState>()(
 
       getTotalDiscount: () => {
         const state = get();
-        const itemsDiscount = state.items.reduce((sum, item) => addMoney(sum, calculateItemLineTotal(item).discountAmt), 0);
-        const itemsTotal = state.items.reduce((sum, item) => addMoney(sum, calculateItemLineTotal(item).total), 0);
+        const itemsDiscount = state.items.reduce(
+          (sum, item) => addMoney(sum, calculateItemLineTotal(item).discountAmt), 0
+        );
+        const itemsTotal = state.items.reduce(
+          (sum, item) => addMoney(sum, calculateItemLineTotal(item).total), 0
+        );
         let globalDiscountAmt = 0;
         if (state.globalDiscountType === 'amount') {
           globalDiscountAmt = state.globalDiscountValue;
@@ -196,8 +229,6 @@ export const useCartStore = create<CartState>()(
         items: state.items,
         globalDiscountType: state.globalDiscountType,
         globalDiscountValue: state.globalDiscountValue,
-        customerName: state.customerName,
-        customerPhone: state.customerPhone,
       }),
     }
   )

@@ -1,19 +1,40 @@
 import { useState, useRef } from 'react';
-import { Settings, Shield, HardDrive, Download, Upload, AlertTriangle, Key, Store, Receipt } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Settings, Shield, HardDrive, Download, Upload, AlertTriangle, Key, Store, Receipt, ClipboardList, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { exportDb, importDb } from '@/lib/backup';
 import { changeDailyLock, changeAdminPin } from '@/lib/auth';
 import { useSettingsStore } from '@/stores/settings.store';
+import { getAuditLog } from '@/db/queries/audit';
+import { format, parseISO } from 'date-fns';
+
+const ACTION_LABELS: Record<string, string> = {
+  'إتمام_بيع': 'إتمام بيع',
+  'استرجاع_فاتورة': 'استرجاع فاتورة',
+  'تغيير_قفل_يومي': 'تغيير قفل اليومية',
+  'تغيير_رمز_مشرف': 'تغيير رمز المشرف',
+  'استعادة_نسخة_احتياطية': 'استعادة نسخة احتياطية',
+  'تعديل_سعر_منتج': 'تعديل سعر منتج',
+};
+
+const ACTION_COLORS: Record<string, string> = {
+  'إتمام_بيع': 'bg-success/10 text-success',
+  'استرجاع_فاتورة': 'bg-danger/10 text-danger',
+  'تغيير_قفل_يومي': 'bg-warning/10 text-warning',
+  'تغيير_رمز_مشرف': 'bg-danger/10 text-danger',
+  'استعادة_نسخة_احتياطية': 'bg-accent/10 text-accent',
+  'تعديل_سعر_منتج': 'bg-warning/10 text-warning',
+};
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<'general' | 'pos' | 'security' | 'backup'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'pos' | 'security' | 'backup' | 'audit'>('general');
   const { settings, updateSettings } = useSettingsStore();
 
   // General Settings
   const [storeName, setStoreName] = useState(settings.storeName);
-  const [storePhone, setStoreNamePhone] = useState(settings.storePhone);
+  const [storePhone, setStorePhone] = useState(settings.storePhone);
   const [storeAddress, setStoreAddress] = useState(settings.storeAddress);
 
   // POS Settings
@@ -36,6 +57,12 @@ export default function SettingsPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { requireAdminAction } = useAuth();
+
+  const { data: auditRows = [], refetch: refetchAudit } = useQuery({
+    queryKey: ['audit_log'],
+    queryFn: () => getAuditLog(200),
+    enabled: activeTab === 'audit',
+  });
 
   const handleSaveDailyLock = async () => {
     if (newDailyLock.length < 4) {
@@ -198,6 +225,18 @@ export default function SettingsPage() {
               <HardDrive className="w-5 h-5" />
               النسخ الاحتياطي
             </button>
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors text-start",
+                activeTab === 'audit'
+                  ? "bg-accent text-white shadow-sm"
+                  : "bg-surface text-text-secondary hover:bg-muted"
+              )}
+            >
+              <ClipboardList className="w-5 h-5" />
+              سجل التدقيق
+            </button>
           </div>
 
           {/* Main Content */}
@@ -225,7 +264,7 @@ export default function SettingsPage() {
                       type="text"
                       dir="ltr"
                       value={storePhone}
-                      onChange={(e) => setStoreNamePhone(e.target.value)}
+                      onChange={(e) => setStorePhone(e.target.value)}
                       className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent text-start"
                     />
                   </div>
@@ -410,6 +449,64 @@ export default function SettingsPage() {
                       </div>
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'audit' && (
+              <div className="space-y-4 animate-in fade-in">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    <ClipboardList className="w-6 h-6 text-accent" /> سجل التدقيق
+                  </h2>
+                  <button
+                    onClick={() => refetchAudit()}
+                    className="p-2 text-text-secondary hover:bg-muted rounded-lg transition-colors"
+                    title="تحديث"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-sm text-text-secondary mb-4" style={{ fontFamily: 'Tajawal, sans-serif' }}>
+                  آخر 200 عملية حساسة — قراءة فقط، الأحدث أولاً.
+                </p>
+
+                <div className="overflow-x-auto rounded-xl border border-border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted text-text-secondary">
+                      <tr>
+                        <th className="px-4 py-3 text-start whitespace-nowrap" style={{ fontFamily: 'Tajawal, sans-serif' }}>التاريخ والوقت</th>
+                        <th className="px-4 py-3 text-start whitespace-nowrap" style={{ fontFamily: 'Tajawal, sans-serif' }}>نوع العملية</th>
+                        <th className="px-4 py-3 text-start" style={{ fontFamily: 'Tajawal, sans-serif' }}>الوصف</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {auditRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-10 text-center text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>
+                            لا توجد عمليات مسجّلة بعد
+                          </td>
+                        </tr>
+                      ) : auditRows.map(row => (
+                        <tr key={row.id} className="hover:bg-muted/30">
+                          <td className="px-4 py-3 text-text-secondary whitespace-nowrap numeric" style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px' }}>
+                            {format(parseISO(row.ts), 'yyyy-MM-dd HH:mm:ss')}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className={cn(
+                              'px-2 py-0.5 rounded-full text-xs font-bold',
+                              ACTION_COLORS[row.action] ?? 'bg-muted text-text-secondary'
+                            )} style={{ fontFamily: 'Tajawal, sans-serif' }}>
+                              {ACTION_LABELS[row.action] ?? row.action}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-text-primary" style={{ fontFamily: 'Tajawal, sans-serif' }}>
+                            {row.detail ?? '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}

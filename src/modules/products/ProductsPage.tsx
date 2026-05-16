@@ -138,7 +138,7 @@ export default function ProductsPage() {
 
                     <div className="text-xs text-text-secondary mb-1">{categoryName}</div>
                     <h3 className="font-bold text-lg leading-tight mb-1 pe-14">{product.name}</h3>
-                    {product.sku && <div className="text-xs text-secondary font-mono bg-muted inline-block px-1.5 rounded mb-3">{product.sku}</div>}
+                    {product.sku && <div className="text-xs text-text-secondary font-mono bg-muted inline-block px-1.5 rounded mb-3">{product.sku}</div>}
                     
                     <div className="flex justify-between items-end mt-4">
                       <div className="font-bold text-lg numeric text-accent">{formatMoney(product.sale_price)}</div>

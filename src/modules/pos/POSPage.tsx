@@ -8,7 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCartStore } from "@/stores/cart.store";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
-import { ShoppingCart, X, Settings } from "lucide-react";
+import { ShoppingCart, X, Home } from "lucide-react";
 
 export default function POSPage() {
   const queryClient = useQueryClient();
@@ -41,19 +41,24 @@ export default function POSPage() {
         <CartSidebar />
       </div>
 
-      {/* ── Settings / Exit button (top-start of products area) ── */}
-      <button
-        onClick={() => navigate('/dashboard')}
-        className="hidden lg:flex absolute top-3 start-[368px] z-20 w-11 h-11 items-center justify-center rounded-lg bg-surface border border-border text-text-secondary hover:text-text-primary hover:border-accent transition-colors shadow-sm"
-        title="العودة للرئيسية"
-        style={{ touchAction: 'manipulation', userSelect: 'none' }}
-      >
-        <Settings className="w-5 h-5" />
-      </button>
-
       {/* ── Main Products Area — fills remaining space, LEFT side ── */}
       <div className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
-        <SavedCartsTabs />
+
+        {/* ── Top bar: Home button + SavedCartsTabs ── */}
+        <div className="flex items-center shrink-0 border-b border-border bg-background">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="hidden lg:flex w-11 h-11 shrink-0 mx-2 items-center justify-center rounded-lg border border-border bg-surface text-text-secondary hover:text-text-primary hover:border-accent transition-colors shadow-sm"
+            title="العودة للرئيسية"
+            style={{ touchAction: 'manipulation', userSelect: 'none' }}
+          >
+            <Home className="w-5 h-5" />
+          </button>
+          <div className="flex-1 min-w-0 border-s border-border lg:border-s lg:border-border">
+            <SavedCartsTabs />
+          </div>
+        </div>
+
         <div className="flex-1 overflow-hidden min-h-0">
           <ProductGrid />
         </div>
@@ -85,15 +90,16 @@ export default function POSPage() {
       {/* ── Mobile Cart Overlay (bottom sheet) ── */}
       {showMobileCart && (
         <div className="lg:hidden fixed inset-0 z-50 bg-background flex flex-col animate-in slide-in-from-bottom">
-          <div className="p-4 flex items-center justify-between border-b border-border bg-surface shrink-0">
-            <h2 className="text-xl font-bold" style={{ fontFamily: 'Tajawal, sans-serif' }}>عربة التسوق</h2>
+          <div className="p-3 flex items-center justify-between border-b border-border bg-surface shrink-0 gap-2">
             <button
               onClick={() => setShowMobileCart(false)}
-              className="p-2 hover:bg-muted rounded-full"
-              style={{ touchAction: 'manipulation' }}
+              className="flex items-center gap-1.5 h-9 px-3 bg-muted hover:bg-border rounded-lg text-sm font-bold text-text-primary transition-colors shrink-0"
+              style={{ touchAction: 'manipulation', fontFamily: 'Tajawal, sans-serif' }}
             >
-              <X className="w-6 h-6 text-text-secondary" />
+              <X className="w-4 h-4" />
+              متابعة التسوق
             </button>
+            <h2 className="text-base font-bold" style={{ fontFamily: 'Tajawal, sans-serif' }}>السلة</h2>
           </div>
           <div className="flex-1 overflow-hidden">
             <CartSidebar />

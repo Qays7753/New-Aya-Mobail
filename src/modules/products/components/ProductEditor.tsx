@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconPicker } from '@/components/products/IconPicker';
 import { ImageUploader } from '@/components/products/ImageUploader';
 import { saveProductImage, loadProductImage, deleteProductImage } from '@/lib/imageStorage';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface ProductEditorProps {
   product: Product | null;
@@ -28,12 +29,14 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
   const queryClient = useQueryClient();
   const isEditing = !!product;
   const { requireAdminAction } = useAuth();
+  const [confirmToggle, setConfirmToggle] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
     category: 'device',
     sale_price: '',
+    cost_price: '',
     stock_qty: '0',
     min_stock: '0',
     track_stock: false,
@@ -54,6 +57,7 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
           sku: product.sku || '',
           category: product.category,
           sale_price: (product.sale_price / 100).toString(),
+          cost_price: product.cost_price > 0 ? (product.cost_price / 100).toString() : '',
           stock_qty: product.stock_qty.toString(),
           min_stock: product.min_stock.toString(),
           track_stock: product.track_stock,
@@ -74,6 +78,7 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
           sku: '',
           category: 'device',
           sale_price: '',
+          cost_price: '',
           stock_qty: '0',
           min_stock: '0',
           track_stock: true,
@@ -95,6 +100,7 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
         sku: formData.sku || null,
         category: formData.category as any,
         sale_price: parseMoney(formData.sale_price),
+        cost_price: formData.cost_price ? parseMoney(formData.cost_price) : 0,
         stock_qty: parseInt(formData.stock_qty) || 0,
         min_stock: parseInt(formData.min_stock) || 0,
         track_stock: formData.track_stock,
@@ -208,18 +214,34 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-2">سعر البيع <span className="text-danger">*</span></label>
-            <div className="relative">
-              <input 
-                type="text" 
-                inputMode="decimal"
-                value={formData.sale_price}
-                onChange={(e) => setFormData({...formData, sale_price: e.target.value})}
-                required
-                className="w-full px-4 py-2.5 rounded-lg border border-border bg-background focus:border-accent focus:ring-1 focus:ring-accent outline-none font-bold numeric text-lg ps-12"
-              />
-              <span className="absolute start-4 top-1/2 -translate-y-1/2 text-text-secondary text-sm">د.ع</span>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">سعر البيع <span className="text-danger">*</span></label>
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={formData.sale_price}
+                  onChange={(e) => setFormData({...formData, sale_price: e.target.value})}
+                  required
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background focus:border-accent focus:ring-1 focus:ring-accent outline-none font-bold numeric text-lg ps-12"
+                />
+                <span className="absolute start-4 top-1/2 -translate-y-1/2 text-text-secondary text-sm">د.أ</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">سعر التكلفة <span className="text-text-secondary text-xs">(اختياري)</span></label>
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={formData.cost_price}
+                  onChange={(e) => setFormData({...formData, cost_price: e.target.value})}
+                  placeholder="0"
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background focus:border-accent focus:ring-1 focus:ring-accent outline-none font-bold numeric text-lg ps-12"
+                />
+                <span className="absolute start-4 top-1/2 -translate-y-1/2 text-text-secondary text-sm">د.أ</span>
+              </div>
             </div>
           </div>
 
@@ -266,8 +288,8 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
 
           <div className="flex items-center justify-between border border-border rounded-xl p-4">
             <div>
-              <h4 className="font-medium">إضافة سريعة (POS)</h4>
-              <p className="text-secondary text-xs">إظهار كزر سريع في شاشة نقاط البيع</p>
+              <h4 className="font-medium">إضافة سريعة في نقطة البيع</h4>
+              <p className="text-text-secondary text-xs">إظهار كزر سريع في شاشة نقطة البيع</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input 
@@ -309,11 +331,7 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
           
           {isEditing && (
              <button
-              onClick={() => {
-                if (window.confirm(`هل أنت متأكد من ${product.is_active ? 'إيقاف' : 'تفعيل'} هذا الصنف؟`)) {
-                  requireAdminAction(() => toggleMutation.mutate());
-                }
-              }}
+              onClick={() => setConfirmToggle(true)}
               className="px-4 h-[var(--btn-height)] bg-surface border border-border text-text-primary rounded-lg hover:bg-muted transition-colors flex justify-center items-center"
               title={product.is_active ? "إيقاف الصنف" : "تفعيل الصنف"}
             >
@@ -322,6 +340,19 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
           )}
         </div>
       </div>
+
+      {isEditing && (
+        <ConfirmDialog
+          open={confirmToggle}
+          title={product.is_active ? 'إيقاف الصنف' : 'تفعيل الصنف'}
+          message={`هل أنت متأكد من ${product.is_active ? 'إيقاف' : 'تفعيل'} هذا الصنف؟`}
+          confirmLabel={product.is_active ? 'إيقاف' : 'تفعيل'}
+          cancelLabel="إلغاء"
+          danger={product.is_active}
+          onConfirm={() => { requireAdminAction(() => toggleMutation.mutate()); setConfirmToggle(false); }}
+          onCancel={() => setConfirmToggle(false)}
+        />
+      )}
     </div>
   );
 }

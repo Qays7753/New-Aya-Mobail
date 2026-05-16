@@ -64,16 +64,6 @@ export function DailyLockScreen() {
         <p className="text-text-secondary text-center max-w-sm">
           يرجى إدخال الركن الموحد (Daily Lock) لفتح نظام المبيعات
         </p>
-        <button 
-          onClick={async () => {
-            if (confirm("هل أنت متأكد من استعادة الأرقام السرية الافتراضية؟")) {
-              (window as any).resetPins();
-            }
-          }}
-          className="text-xs text-text-secondary mt-2 underline"
-        >
-          نسيت كلمة المرور؟
-        </button>
       </div>
 
       {lockoutSecs > 0 ? (

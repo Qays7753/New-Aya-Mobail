@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getDailySummary } from '@/db/queries/operations';
 import { getActiveAccounts } from '@/db/queries/accounts';
-import { getAllProducts } from '@/db/queries/products';
+import { getLowStockProducts } from '@/db/queries/products';
 import { getJobs } from '@/db/queries/maintenance';
 import { getRecentInvoices } from '@/db/queries/sales';
 import { formatMoney } from '@/lib/money';
@@ -22,9 +22,10 @@ export default function DashboardPage() {
     queryFn: getActiveAccounts
   });
 
-  const { data: products = [] } = useQuery({
-    queryKey: ['all-products'],
-    queryFn: () => getAllProducts()
+  const { data: lowStockProducts = [] } = useQuery({
+    queryKey: ['low-stock-products'],
+    queryFn: getLowStockProducts,
+    staleTime: 60_000,
   });
 
   const { data: maintenanceJobs = [] } = useQuery({
@@ -38,7 +39,6 @@ export default function DashboardPage() {
   });
 
   const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
-  const lowStockProducts = products.filter(p => p.track_stock && p.stock_qty <= p.min_stock);
   const pendingJobs = maintenanceJobs.filter(j => j.status === 'new' || j.status === 'in_progress');
 
   const QUICK_LINKS = [

@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useCartStore } from '@/stores/cart.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getActiveAccounts } from '@/db/queries/accounts';
 import { completeSale, getInvoiceWithItems } from '@/db/queries/sales';
 import { formatMoney, parseMoney } from '@/lib/money';
-import { cn } from '@/lib/utils';
 import { X, CheckCircle, FileText, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { nanoid } from 'nanoid';
+import { NumPad } from '@/components/ui/NumPad';
 
 interface PaymentDialogProps {
   isOpen: boolean;
@@ -24,7 +25,8 @@ interface PaymentRow {
 export function PaymentDialog({ isOpen, onClose, onSuccess }: PaymentDialogProps) {
   const { items, getSubtotal, getTotalDiscount, getTotal } = useCartStore();
   const total = getTotal();
-  
+  const dialogRef = useFocusTrap(isOpen);
+
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [cashReceivedInput, setCashReceivedInput] = useState<string>('');
 
@@ -37,10 +39,10 @@ export function PaymentDialog({ isOpen, onClose, onSuccess }: PaymentDialogProps
   useEffect(() => {
     if (isOpen) {
       if (accounts.length > 0) {
-        setPayments([{ 
-          id: nanoid(), 
-          accountId: accounts[0].id, 
-          amountInput: (total / 100).toString() 
+        setPayments([{
+          id: nanoid(),
+          accountId: accounts[0].id,
+          amountInput: (total / 100).toString()
         }]);
       } else {
         setPayments([]);
@@ -53,24 +55,26 @@ export function PaymentDialog({ isOpen, onClose, onSuccess }: PaymentDialogProps
     accountId: p.accountId,
     amount: parseMoney(p.amountInput || '0')
   }));
-  
+
   const totalApplied = parsedPayments.reduce((s, p) => s + p.amount, 0);
   const remaining = total - totalApplied;
-  const isExactMatch = totalApplied === total;
-  
+  const isOverpaid = totalApplied > total;
+  const isPaid = totalApplied >= total;
+
   const cashAccountsIds = accounts.filter(a => a.type === 'cash').map(a => a.id);
   const cashIncluded = parsedPayments.some(p => cashAccountsIds.includes(p.accountId));
-  
+
   let change = 0;
   if (cashIncluded) {
     const received = parseMoney(cashReceivedInput || '0');
     const totalCashNeeded = parsedPayments
       .filter(p => cashAccountsIds.includes(p.accountId))
       .reduce((s, p) => s + p.amount, 0);
-      
     if (received >= totalCashNeeded) {
       change = received - totalCashNeeded;
     }
+  } else if (isOverpaid) {
+    change = totalApplied - total;
   }
 
   const queryClient = useQueryClient();
@@ -95,10 +99,10 @@ export function PaymentDialog({ isOpen, onClose, onSuccess }: PaymentDialogProps
 
   const handleAddPayment = () => {
     if (accounts.length === 0) return;
-    setPayments([...payments, { 
-      id: nanoid(), 
-      accountId: accounts[0].id, 
-      amountInput: remaining > 0 ? (remaining / 100).toString() : '0' 
+    setPayments([...payments, {
+      id: nanoid(),
+      accountId: accounts[0].id,
+      amountInput: remaining > 0 ? (remaining / 100).toString() : '0'
     }]);
   };
 
@@ -110,39 +114,60 @@ export function PaymentDialog({ isOpen, onClose, onSuccess }: PaymentDialogProps
     setPayments(payments.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
+  const handleNumDigit = (d: string) => {
+    setCashReceivedInput(prev => {
+      if (d === '.' && prev.includes('.')) return prev;
+      if (prev === '' || prev === '0') return d === '.' ? '0.' : d;
+      return prev + d;
+    });
+  };
+
+  const handleNumClear = () => {
+    setCashReceivedInput(prev => (prev.length <= 1 ? '' : prev.slice(0, -1)));
+  };
+
+  const handleCheckout = () => {
+    if (!isPaid || checkoutMutation.isPending) return;
+    checkoutMutation.mutate();
+  };
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-surface w-full max-w-md rounded-[24px] md:rounded-2xl p-6 shadow-md animate-in slide-in-from-bottom-4 md:zoom-in-95 flex flex-col max-h-[90vh]">
-        
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold">إتمام الدفع</h2>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="إتمام الدفع" className="bg-surface w-full max-w-md rounded-[24px] md:rounded-2xl shadow-md animate-in slide-in-from-bottom-4 md:zoom-in-95 flex flex-col max-h-[92vh]">
+
+        {/* Header */}
+        <div className="flex justify-between items-center p-5 pb-3 shrink-0">
+          <h2 className="text-xl font-bold" style={{ fontFamily: 'Tajawal, sans-serif' }}>إتمام الدفع</h2>
           <button onClick={onClose} disabled={checkoutMutation.isPending} className="p-2 hover:bg-muted rounded-full">
             <X className="w-6 h-6" />
           </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 pb-4 hide-scrollbar">
-          <div className="bg-muted/50 rounded-xl p-4 flex flex-col items-center justify-center mb-6">
-            <span className="text-text-secondary text-sm mb-1">المبلغ المطلوب</span>
+        <div className="overflow-y-auto flex-1 px-5 pb-4 hide-scrollbar">
+
+          {/* Amount due */}
+          <div className="bg-muted/50 rounded-xl p-4 flex flex-col items-center justify-center mb-5">
+            <span className="text-text-secondary text-sm mb-1" style={{ fontFamily: 'Tajawal, sans-serif' }}>المبلغ المطلوب</span>
             <span className="text-4xl font-bold numeric text-accent">{formatMoney(total)}</span>
           </div>
 
-          <div className="space-y-3 mb-6">
+          {/* Payment rows */}
+          <div className="space-y-3 mb-5">
             <div className="flex justify-between items-center mb-2">
-              <label className="font-medium">طرق الدفع</label>
-              <button 
+              <label className="font-medium" style={{ fontFamily: 'Tajawal, sans-serif' }}>طرق الدفع</label>
+              <button
                 onClick={handleAddPayment}
                 className="text-accent text-sm font-bold flex items-center gap-1 hover:bg-accent/10 px-2 py-1 rounded-lg"
               >
                 <Plus className="w-4 h-4" /> إضافة طريقة
               </button>
             </div>
-            
+
             {payments.map((p) => (
               <div key={p.id} className="flex gap-2 items-center bg-background rounded-xl border border-border p-2">
-                <select 
+                <select
                   value={p.accountId}
                   onChange={(e) => handleUpdatePayment(p.id, 'accountId', e.target.value)}
                   className="h-11 px-2 rounded-lg bg-muted text-sm font-medium border-none outline-none focus:ring-1 focus:ring-accent w-1/2"
@@ -160,10 +185,10 @@ export function PaymentDialog({ isOpen, onClose, onSuccess }: PaymentDialogProps
                     className="w-full h-11 pe-8 ps-2 rounded-lg border-none bg-muted focus:ring-1 focus:ring-accent outline-none font-bold numeric text-end"
                     style={{ direction: 'ltr' }}
                   />
-                  <span className="absolute end-2 top-1/2 -translate-y-1/2 text-text-secondary text-xs">د.ع</span>
+                  <span className="absolute end-2 top-1/2 -translate-y-1/2 text-text-secondary text-xs">د.أ</span>
                 </div>
                 {payments.length > 1 && (
-                  <button 
+                  <button
                     onClick={() => handleRemovePayment(p.id)}
                     className="p-2 text-danger hover:bg-danger/10 rounded-lg shrink-0"
                   >
@@ -172,74 +197,93 @@ export function PaymentDialog({ isOpen, onClose, onSuccess }: PaymentDialogProps
                 )}
               </div>
             ))}
-            
-            {!isExactMatch && (
-              <div className={cn(
-                "p-3 rounded-xl border text-center text-sm font-bold",
-                remaining > 0 ? "bg-warning-bg text-warning border-warning" : "bg-danger-bg text-danger border-danger"
-              )}>
-                {remaining > 0 ? `المبلغ غير كافٍ. لا يُسمح بالبيع الآجل. المتبقي: ${formatMoney(remaining)}` : `المبلغ زائد: ${formatMoney(Math.abs(remaining))}`}
+
+            {/* Status banner */}
+            {remaining > 0 && (
+              <div className="p-3 rounded-xl border text-center text-sm font-bold bg-warning-bg text-warning border-warning" style={{ fontFamily: 'Tajawal, sans-serif' }}>
+                المبلغ غير كافٍ — المتبقي: {formatMoney(remaining)}
+              </div>
+            )}
+            {isOverpaid && !cashIncluded && (
+              <div className="p-3 rounded-xl border text-center text-sm font-bold bg-success-bg text-success border-success" style={{ fontFamily: 'Tajawal, sans-serif' }}>
+                زيادة {formatMoney(Math.abs(remaining))} — الباقي للعميل نقداً
               </div>
             )}
           </div>
 
+          {/* Cash received + NumPad */}
           {cashIncluded && (
-            <div className="mb-6 bg-surface border border-border p-4 rounded-xl">
-              <label className="block font-medium mb-2 pe-1">المبلغ المستلم (نقد) اختياري للباقي</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={cashReceivedInput}
-                  onChange={(e) => setCashReceivedInput(e.target.value)}
-                  className="w-full h-12 pe-10 ps-4 rounded-lg border border-border focus:border-accent focus:ring-1 focus:ring-accent outline-none text-xl font-bold numeric text-start bg-background"
-                  style={{ direction: 'ltr' }}
-                />
-                <span className="absolute end-3 top-1/2 -translate-y-1/2 text-text-secondary font-medium">د.ع</span>
+            <div className="mb-4 bg-background border border-border rounded-xl p-4">
+              <label className="block font-medium mb-2 text-sm" style={{ fontFamily: 'Tajawal, sans-serif' }}>
+                المبلغ المستلم نقداً
+              </label>
+
+              {/* Display */}
+              <div className="bg-muted rounded-xl py-3 px-4 mb-3 flex items-center justify-between">
+                <span className="text-text-secondary text-sm">د.أ</span>
+                <span className="text-2xl font-bold numeric tracking-wide">
+                  {cashReceivedInput || '0'}
+                </span>
               </div>
+
+              {/* Change */}
               {change > 0 && (
-                <div className="mt-3 flex justify-between items-center bg-warning-bg text-warning px-3 py-2 rounded-lg">
-                  <span className="font-medium">الباقي للعميل:</span>
+                <div className="mb-3 flex justify-between items-center bg-warning-bg text-warning px-3 py-2 rounded-lg">
+                  <span className="font-medium text-sm" style={{ fontFamily: 'Tajawal, sans-serif' }}>الباقي للعميل:</span>
                   <span className="numeric font-bold text-lg">{formatMoney(change)}</span>
                 </div>
               )}
+
+              {/* NumPad */}
+              <div className="flex justify-center pt-1">
+                <NumPad
+                  allowDecimal
+                  onDigit={handleNumDigit}
+                  onClear={handleNumClear}
+                  onSubmit={handleCheckout}
+                  submitDisabled={checkoutMutation.isPending || !isPaid}
+                />
+              </div>
             </div>
           )}
         </div>
 
-        <div className="pt-4 border-t border-border shrink-0 mt-auto">
-          <button
-            onClick={() => checkoutMutation.mutate()}
-            disabled={checkoutMutation.isPending || !isExactMatch}
-            className="w-full h-[var(--btn-height)] bg-accent text-white font-bold rounded-lg disabled:opacity-50 hover:bg-accent-hover transition-colors shadow-sm flex items-center justify-center gap-2"
-          >
-            {checkoutMutation.isPending ? (
-              <span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full"></span>
-            ) : (
-              <CheckCircle className="w-5 h-5" />
-            )}
-            تأكيد الدفع
-          </button>
-        </div>
+        {/* Footer checkout button (shown when no cash) */}
+        {!cashIncluded && (
+          <div className="px-5 pb-5 pt-3 border-t border-border shrink-0">
+            <button
+              onClick={handleCheckout}
+              disabled={checkoutMutation.isPending || !isPaid}
+              className="w-full h-[var(--btn-height)] bg-accent text-white font-bold rounded-xl disabled:opacity-50 hover:bg-accent-hover transition-colors shadow-sm flex items-center justify-center gap-2"
+              style={{ fontFamily: 'Tajawal, sans-serif' }}
+            >
+              {checkoutMutation.isPending ? (
+                <span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
+              ) : (
+                <CheckCircle className="w-5 h-5" />
+              )}
+              تأكيد الدفع
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// Separate component for the Success view
 import { ReceiptOverlay } from '@/components/receipt/ReceiptOverlay';
 
-export function SuccessDialog({ 
-  isOpen, 
+export function SuccessDialog({
+  isOpen,
   invoiceId,
-  invoiceNumber, 
+  invoiceNumber,
   change,
   onClose: _onClose,
-  onNewSale 
-}: { 
-  isOpen: boolean; 
+  onNewSale
+}: {
+  isOpen: boolean;
   invoiceId: string;
-  invoiceNumber: string; 
+  invoiceNumber: string;
   change: number;
   onClose: () => void;
   onNewSale: () => void;
@@ -272,10 +316,10 @@ export function SuccessDialog({
 
   if (showReceipt && invoiceData) {
     return (
-      <ReceiptOverlay 
-        isOpen={true} 
-        onClose={onNewSale} 
-        invoice={invoiceData} 
+      <ReceiptOverlay
+        isOpen={true}
+        onClose={onNewSale}
+        invoice={invoiceData}
       />
     );
   }
@@ -286,14 +330,14 @@ export function SuccessDialog({
         <div className="w-16 h-16 bg-success-bg text-success rounded-full flex items-center justify-center mb-4">
           <CheckCircle className="w-10 h-10" />
         </div>
-        <h2 className="text-2xl font-bold text-success mb-2">تمت العملية بنجاح</h2>
+        <h2 className="text-2xl font-bold text-success mb-2" style={{ fontFamily: 'Tajawal, sans-serif' }}>تمت العملية بنجاح</h2>
         <p className="text-text-secondary mb-6 flex items-center gap-2 justify-center">
           <FileText className="w-4 h-4" /> فاتورة {invoiceNumber}
         </p>
 
         {change > 0 && (
           <div className="w-full p-4 bg-warning-bg rounded-xl text-warning mb-6">
-            <span className="block text-sm mb-1">الباقي للعميل</span>
+            <span className="block text-sm mb-1" style={{ fontFamily: 'Tajawal, sans-serif' }}>الباقي للعميل</span>
             <span className="block text-2xl font-bold numeric">{formatMoney(change)}</span>
           </div>
         )}
@@ -302,12 +346,14 @@ export function SuccessDialog({
           <button
             onClick={handleShowReceipt}
             className="flex-1 h-[var(--btn-height)] bg-surface border border-border text-text-primary font-bold rounded-lg hover:border-accent transition-colors"
+            style={{ fontFamily: 'Tajawal, sans-serif' }}
           >
             عرض الإيصال
           </button>
           <button
             onClick={onNewSale}
             className="flex-1 h-[var(--btn-height)] bg-accent text-white font-bold rounded-lg hover:bg-accent-hover transition-colors"
+            style={{ fontFamily: 'Tajawal, sans-serif' }}
           >
             بيع جديد
           </button>

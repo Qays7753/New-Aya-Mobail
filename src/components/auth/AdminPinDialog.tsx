@@ -21,10 +21,9 @@ export function AdminPinDialog({ isOpen, onClose, onSuccess, title, description 
 
   useEffect(() => {
     if (!isOpen) {
-        setPin('');
-        return;
+      setPin('');
+      return;
     }
-    
     const checkLockout = async () => {
       const remaining = await getLockoutSecondsRemaining('admin');
       setLockoutSecs(remaining);
@@ -34,30 +33,32 @@ export function AdminPinDialog({ isOpen, onClose, onSuccess, title, description 
     return () => clearInterval(interval);
   }, [isOpen]);
 
-  const handleSubmit = async () => {
+  const handleSubmitPin = async (pinToCheck: string) => {
     if (lockoutSecs > 0) return;
-    
-    if (pin.length >= 4) {
-      const stored = await get('admin_pin');
-      if (stored && await verifyCode(pin, stored)) {
-        grantAdminAccess();
-        onSuccess();
-        toastSuccess("تم تأكيد الصلاحية");
-        setPin('');
-      } else {
-        await recordFailedAttempt('admin');
-        setPin('');
-        toastError("الرمز غير صحيح");
-        const remaining = await getLockoutSecondsRemaining('admin');
-        setLockoutSecs(remaining);
-      }
+    if (pinToCheck.length !== 4) return;
+
+    const stored = await get('admin_pin');
+    if (stored && await verifyCode(pinToCheck, stored)) {
+      grantAdminAccess();
+      onSuccess();
+      toastSuccess("تم تأكيد الصلاحية");
+      setPin('');
+    } else {
+      await recordFailedAttempt('admin');
+      setPin('');
+      toastError("الرمز غير صحيح");
+      const remaining = await getLockoutSecondsRemaining('admin');
+      setLockoutSecs(remaining);
     }
   };
 
   const handleKeyPress = (num: number) => {
-    if (pin.length < 6 && lockoutSecs === 0) {
+    if (pin.length < 4 && lockoutSecs === 0) {
       const nextPin = pin + num;
       setPin(nextPin);
+      if (nextPin.length === 4) {
+        handleSubmitPin(nextPin);
+      }
     }
   };
 
@@ -70,7 +71,7 @@ export function AdminPinDialog({ isOpen, onClose, onSuccess, title, description 
   return (
     <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" dir="rtl">
       <div className="bg-surface w-full max-w-sm rounded-[24px] p-6 shadow-xl relative animate-in zoom-in-95 flex flex-col items-center">
-        <button 
+        <button
           onClick={onClose}
           className="absolute top-4 end-4 p-2 text-text-secondary hover:bg-muted rounded-full transition-colors outline-none"
         >
@@ -80,21 +81,11 @@ export function AdminPinDialog({ isOpen, onClose, onSuccess, title, description 
         <div className="w-14 h-14 bg-accent/10 border border-accent/20 text-accent rounded-2xl flex items-center justify-center mb-4 mt-2">
           <Shield className="w-7 h-7" />
         </div>
-        
+
         <h2 className="text-xl font-bold mb-1">{title || 'صلاحيات المدير'}</h2>
-        <p className="text-sm text-text-secondary text-center">
+        <p className="text-sm text-text-secondary text-center mb-6">
           {description || 'الرجاء إدخال رمز المدير (Admin PIN) للمتابعة'}
         </p>
-        <button 
-          onClick={async () => {
-            if (confirm("هل أنت متأكد من استعادة الأرقام السرية الافتراضية؟")) {
-              (window as any).resetPins();
-            }
-          }}
-          className="text-xs text-text-secondary mt-1 mb-6 underline"
-        >
-          نسيت كلمة المرور؟
-        </button>
 
         {lockoutSecs > 0 ? (
           <div className="w-full bg-danger/10 text-danger rounded-xl p-4 flex flex-col items-center mb-6">
@@ -104,13 +95,14 @@ export function AdminPinDialog({ isOpen, onClose, onSuccess, title, description 
           </div>
         ) : (
           <>
-            <div className="flex gap-2 w-full justify-center mb-8 h-12" dir="ltr">
-              {[...Array(6)].map((_, i) => (
-                <div 
+            <div className="flex gap-4 mb-8" dir="ltr">
+              {[...Array(4)].map((_, i) => (
+                <div
                   key={i}
-                  className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-xl font-bold transition-all ${
-                    pin.length > i ? 'border-accent bg-accent text-white scale-110' :
-                    i < 4 ? 'border-border bg-muted/50' : 'border-dashed border-border opacity-50 bg-transparent gap-marker'
+                  className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center text-2xl font-bold transition-all ${
+                    pin.length > i
+                      ? 'border-accent bg-accent text-white scale-110'
+                      : 'border-border bg-surface'
                   }`}
                 >
                   {pin.length > i ? '•' : ''}
@@ -121,7 +113,7 @@ export function AdminPinDialog({ isOpen, onClose, onSuccess, title, description 
             <NumPad
               onDigit={(num) => handleKeyPress(Number(num))}
               onClear={handleBackspace}
-              onSubmit={handleSubmit}
+              onSubmit={() => handleSubmitPin(pin)}
               submitDisabled={pin.length < 4}
             />
           </>

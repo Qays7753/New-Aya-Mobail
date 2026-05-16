@@ -1,5 +1,6 @@
 import { set } from 'idb-keyval';
 import { dbClient } from '@/db/client';
+import { logAudit } from '@/db/queries/audit';
 
 const LAST_BACKUP_KEY = 'pos_last_backup_time';
 
@@ -74,6 +75,7 @@ export const importDb = async (file: File): Promise<void> => {
     throw new Error('فشل فحص سلامة قاعدة البيانات: ' + e.message);
   }
 
-  // هـ) أعد تحميل التطبيق
+  // هـ) سجّل التدقيق ثم أعد تحميل التطبيق
+  await logAudit('استعادة_نسخة_احتياطية', `تم استعادة قاعدة البيانات من ملف: ${file.name}`);
   window.location.reload();
 };

@@ -73,6 +73,9 @@ export default function MaintenancePage() {
       queryClient.invalidateQueries({ queryKey: ['maintenance'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       queryClient.invalidateQueries({ queryKey: ['ledger-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['maintenance-jobs-active'] });
+      queryClient.invalidateQueries({ queryKey: ['recent-invoices-dashboard'] });
       toast.success('تم تحديث حالة الجهاز');
       setDeliveryJobId(null);
     },
@@ -345,7 +348,7 @@ export default function MaintenancePage() {
                       onChange={e => setFormData({...formData, estimated_cost: e.target.value})}
                       className="w-full h-11 ps-10 pe-3 rounded-lg border border-border focus:border-accent outline-none numeric font-bold bg-background"
                     />
-                    <span className="absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">د.ع</span>
+                    <span className="absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">د.أ</span>
                   </div>
                 </div>
               </div>

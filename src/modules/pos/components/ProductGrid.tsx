@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import * as LucideIcons from 'lucide-react';
-import { Search } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, PackageSearch } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getActiveProducts, Product } from '@/db/queries/products';
 import { useCartStore } from '@/stores/cart.store';
@@ -9,15 +8,16 @@ import { cn } from '@/lib/utils';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { loadProductImage } from '@/lib/imageStorage';
 import { useDebounce } from '@/hooks/useDebounce';
+import { getProductIcon } from '@/lib/iconMap';
 
 const CATEGORIES = [
-  { id: 'all',            label: 'الكل',          color: '#CF694A' },
-  { id: 'device',         label: 'أجهزة',          color: '#2563EB' },
-  { id: 'sim',            label: 'شرائح',          color: '#7C3AED' },
-  { id: 'service_general',label: 'خدمات عامة',     color: '#0D9488' },
-  { id: 'service_repair', label: 'خدمات صيانة',    color: '#EA7317' },
-  { id: 'accessory',      label: 'إكسسوار',        color: '#D9A404' },
-  { id: 'package',        label: 'باقات',          color: '#DB2777' },
+  { id: 'all',             label: 'الكل',         color: '#CF694A' },
+  { id: 'device',          label: 'أجهزة',         color: '#2563EB' },
+  { id: 'sim',             label: 'شرائح',         color: '#7C3AED' },
+  { id: 'service_general', label: 'خدمات عامة',    color: '#0D9488' },
+  { id: 'service_repair',  label: 'خدمات صيانة',   color: '#EA7317' },
+  { id: 'accessory',       label: 'إكسسوار',       color: '#D9A404' },
+  { id: 'package',         label: 'باقات',         color: '#DB2777' },
 ];
 
 export function ProductGrid() {
@@ -33,8 +33,6 @@ export function ProductGrid() {
   });
 
   const parentRef = useRef<HTMLDivElement>(null);
-  
-  // Calculate columns based on container width
   const [columns, setColumns] = useState(2);
 
   useEffect(() => {
@@ -57,9 +55,16 @@ export function ProductGrid() {
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 178, // 168px card + 10px gap
+    estimateSize: () => 178,
     overscan: 5,
   });
+
+  const clearFilters = useCallback(() => {
+    setSearch('');
+    setCategory('all');
+  }, []);
+
+  const hasFilters = search !== '' || category !== 'all';
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -71,17 +76,20 @@ export function ProductGrid() {
             placeholder="بحث عن منتج برمز SKU أو الاسم..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="البحث في المنتجات"
             className="w-full h-[var(--input-height)] ps-10 pe-4 rounded-lg border border-border bg-surface focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all"
           />
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary" />
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary" aria-hidden="true" />
         </div>
 
-        <div className="flex overflow-x-auto no-scrollbar">
+        <div className="flex overflow-x-auto no-scrollbar" role="tablist" aria-label="تصفية حسب الفئة">
           {CATEGORIES.map((cat) => {
             const isActive = category === cat.id;
             return (
               <button
                 key={cat.id}
+                role="tab"
+                aria-selected={isActive}
                 onClick={() => setCategory(cat.id)}
                 style={{
                   backgroundColor: cat.color,
@@ -91,7 +99,7 @@ export function ProductGrid() {
                   touchAction: 'manipulation',
                   userSelect: 'none',
                 }}
-                className="flex-1 min-w-[80px] h-[60px] flex items-center justify-center whitespace-nowrap text-white font-bold rounded-t-lg transition-all"
+                className="flex-1 min-w-[80px] h-[60px] flex items-center justify-center whitespace-nowrap text-white font-bold rounded-t-lg transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-inset"
                 dir="rtl"
               >
                 <span style={{ fontFamily: 'Tajawal, sans-serif', fontSize: '15px', fontWeight: 700 }}>
@@ -106,25 +114,39 @@ export function ProductGrid() {
       {/* Grid */}
       <div ref={parentRef} className="flex-1 overflow-y-auto p-4 content-start pb-24 lg:pb-4">
         {isLoading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+          <div className="flex justify-center py-8" aria-live="polite" aria-label="جاري التحميل">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" />
           </div>
         ) : products.length === 0 ? (
-           <div className="text-center py-12 text-text-secondary">
-             لا توجد منتجات مطابقة.
-           </div>
+          <div className="text-center py-16 text-text-secondary flex flex-col items-center gap-3" role="status">
+            <PackageSearch className="w-14 h-14 opacity-25 text-text-secondary" aria-hidden="true" />
+            <div>
+              <p className="font-semibold text-text-primary" style={{ fontFamily: 'Tajawal, sans-serif' }}>
+                {hasFilters ? 'لا توجد نتائج مطابقة' : 'لا توجد منتجات بعد'}
+              </p>
+              <p className="text-sm mt-1 text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>
+                {hasFilters
+                  ? 'جرّب تغيير كلمة البحث أو الفئة'
+                  : 'أضف منتجاتك من قسم المنتجات'}
+              </p>
+            </div>
+            {hasFilters && (
+              <button
+                onClick={clearFilters}
+                className="mt-1 px-4 py-2 bg-accent text-white rounded-lg text-sm font-bold hover:bg-accent-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                style={{ fontFamily: 'Tajawal, sans-serif' }}
+              >
+                مسح التصفية
+              </button>
+            )}
+          </div>
         ) : (
           <div
-            style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
-              width: '100%',
-              position: 'relative',
-            }}
+            style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}
           >
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
               const startIndex = virtualRow.index * columns;
               const rowProducts = products.slice(startIndex, startIndex + columns);
-
               return (
                 <div
                   key={virtualRow.key}
@@ -154,10 +176,10 @@ export function ProductGrid() {
   );
 }
 
-function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void; }) {
+function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void }) {
   const isOutOfStock = product.track_stock && product.stock_qty <= 0;
   const isLowStock = product.track_stock && product.stock_qty > 0 && product.stock_qty <= product.min_stock;
-  
+
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
   const [floatPluses, setFloatPluses] = useState<{ id: number; x: number; y: number }[]>([]);
@@ -174,45 +196,54 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void; 
     return () => { active = false; };
   }, [product.image_path]);
 
-  const categoryColors: Record<string, { bg: string, text: string }> = {
-    device:           { bg: '#E8EEF6', text: '#1E40AF' },
-    sim:              { bg: '#F0EAF6', text: '#5B21B6' },
-    service_general:  { bg: '#EEF6EA', text: '#166534' },
-    service_repair:   { bg: '#FCF4F1', text: '#CF694A' },
-    accessory:        { bg: '#F6F2E8', text: '#854D0E' },
-    package:          { bg: '#F6E8E8', text: '#991B1B' },
-    default:          { bg: '#F3F1EC', text: '#6D6A62' }
+  const categoryColors: Record<string, { bg: string; text: string }> = {
+    device:          { bg: '#E8EEF6', text: '#1E40AF' },
+    sim:             { bg: '#F0EAF6', text: '#5B21B6' },
+    service_general: { bg: '#EEF6EA', text: '#166534' },
+    service_repair:  { bg: '#FCF4F1', text: '#CF694A' },
+    accessory:       { bg: '#F6F2E8', text: '#854D0E' },
+    package:         { bg: '#F6E8E8', text: '#991B1B' },
+    default:         { bg: '#F3F1EC', text: '#6D6A62' },
   };
   const color = categoryColors[product.category as string] || categoryColors.default;
-  const IconComponent = (LucideIcons as any)[product.icon || 'Box'] || LucideIcons.Box;
+  const IconComponent = getProductIcon(product.icon);
 
-  const handleClick = (e: React.MouseEvent) => {
+  const triggerAdd = () => {
     if (isOutOfStock) return;
     const now = Date.now();
     if (now - lastTapTime.current < 80) return;
     lastTapTime.current = now;
-
     onAdd();
     setIsAnimating(true);
     setTimeout(() => setIsAnimating(false), 100);
+  };
 
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    triggerAdd();
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
     const id = floatIdCounter.current++;
-    setFloatPluses(prev => [...prev, { id, x, y }]);
-    setTimeout(() => {
-      setFloatPluses(prev => prev.filter(p => p.id !== id));
-    }, 600);
+    setFloatPluses(prev => [...prev, { id, x: e.clientX - rect.left, y: e.clientY - rect.top }]);
+    setTimeout(() => setFloatPluses(prev => prev.filter(p => p.id !== id)), 600);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      triggerAdd();
+    }
   };
 
   return (
-    <div
+    <button
+      type="button"
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      disabled={isOutOfStock}
+      aria-label={`إضافة ${product.name}، السعر ${formatMoney(product.sale_price)}${isOutOfStock ? '، نفذت الكمية' : ''}`}
       style={{ touchAction: 'manipulation', userSelect: 'none', height: '168px' }}
       className={cn(
-        "bg-surface border border-border rounded-xl flex flex-col select-none relative overflow-hidden",
+        "bg-surface border border-border rounded-xl flex flex-col select-none relative overflow-hidden text-start w-full",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1",
         isOutOfStock ? "opacity-60 grayscale cursor-not-allowed" : "cursor-pointer hover:border-accent",
         isAnimating && "scale-[0.96] transition-transform duration-100",
         !isAnimating && "transition-all"
@@ -222,6 +253,7 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void; 
       {floatPluses.map(fp => (
         <span
           key={fp.id}
+          aria-hidden="true"
           className="absolute z-10 text-[#CF694A] font-bold text-xl pointer-events-none animate-float-up"
           style={{ left: fp.x, top: fp.y, fontFamily: 'Inter' }}
         >
@@ -234,14 +266,18 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void; 
         {imageUrl ? (
           <img src={imageUrl} alt={product.name} className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: color.bg, color: color.text }}>
+          <div
+            className="w-full h-full flex items-center justify-center"
+            style={{ backgroundColor: color.bg, color: color.text }}
+            aria-hidden="true"
+          >
             <IconComponent size={40} opacity={0.85} />
           </div>
         )}
       </div>
 
       {/* Text area */}
-      <div className="flex flex-col justify-between flex-1 px-2 pt-1 pb-2">
+      <div className="flex flex-col justify-between flex-1 px-2 pt-1 pb-2 min-h-0">
         <h3
           className="line-clamp-2 leading-tight text-text-primary"
           style={{ fontFamily: 'Tajawal, sans-serif', fontSize: '13px', fontWeight: 600 }}
@@ -250,28 +286,27 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void; 
         </h3>
 
         <div className="flex items-end justify-between">
-          {/* Low-stock badge */}
           <div className="flex flex-col gap-0.5">
             {product.track_stock && isOutOfStock && (
               <span className="flex items-center gap-0.5" style={{ fontSize: '10px', color: 'var(--color-danger)' }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-danger inline-block" />نفذت
+                <span className="w-1.5 h-1.5 rounded-full bg-danger inline-block" aria-hidden="true" />نفذت
               </span>
             )}
             {product.track_stock && isLowStock && (
               <span className="flex items-center gap-0.5" style={{ fontSize: '10px', color: 'var(--color-warning)' }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-warning inline-block" />{product.stock_qty}
+                <span className="w-1.5 h-1.5 rounded-full bg-warning inline-block" aria-hidden="true" />{product.stock_qty}
               </span>
             )}
           </div>
-          {/* Price */}
           <span
             className="numeric"
             style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 700, color: '#CF694A' }}
+            aria-hidden="true"
           >
             {formatMoney(product.sale_price)}
           </span>
         </div>
       </div>
-    </div>
+    </button>
   );
 }

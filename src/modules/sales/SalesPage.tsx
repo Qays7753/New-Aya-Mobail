@@ -215,7 +215,7 @@ export default function SalesPage() {
                         className="w-full h-10 pe-8 ps-2 rounded-lg border-none bg-muted font-bold numeric text-start outline-none focus:ring-1 focus:ring-accent"
                         style={{ direction: 'ltr' }}
                       />
-                      <span className="absolute end-2 top-1/2 -translate-y-1/2 text-text-secondary text-xs">د.ع</span>
+                      <span className="absolute end-2 top-1/2 -translate-y-1/2 text-text-secondary text-xs">د.أ</span>
                     </div>
                     {refunds.length > 1 && (
                       <button 
