@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { FileText, ArrowRightLeft, Search, XCircle, X, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { ReceiptOverlay } from '@/components/receipt/ReceiptOverlay';
+import { useEscKey } from '@/hooks/useEscKey';
 
 export default function SalesPage() {
   const queryClient = useQueryClient();
@@ -21,6 +22,12 @@ export default function SalesPage() {
   const [receiptInvoiceData, setReceiptInvoiceData] = useState<any>(null);
 
   const { requireAdminAction } = useAuth();
+
+  // Esc: close topmost open dialog first
+  useEscKey(() => {
+    if (receiptOverlayOpen) setReceiptOverlayOpen(false);
+    else if (returnDialogOpen) setReturnDialogOpen(false);
+  }, returnDialogOpen || receiptOverlayOpen);
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ['invoices'],
@@ -167,7 +174,10 @@ export default function SalesPage() {
       </main>
 
       {returnDialogOpen && selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in"
+          onClick={(e) => { if (e.target === e.currentTarget) setReturnDialogOpen(false); }}
+        >
           <div className="bg-surface rounded-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] shadow-xl">
             <div className="flex justify-between items-center p-4 border-b border-border">
               <h2 className="text-xl font-bold">استرجاع فاتورة</h2>

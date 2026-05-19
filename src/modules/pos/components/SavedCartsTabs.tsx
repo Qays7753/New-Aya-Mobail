@@ -27,18 +27,8 @@ export function SavedCartsTabs() {
   const handleAddCart = () => {
     if (savedCarts.length >= 3) return;
     
-    // We create a completely new empty cart by briefly clearing the store 
-    // OR we can just instruct the store to create an empty one.
-    // Wait, saveAsNewCart takes the CURRENT items. If we want a new EMPTY cart...
-    // The requirement says: "إنشاء سلة جديدة بعنوان 'سلة #N' + التبديل إليها"
-    // Does it copy current or is it empty? "أضف saveAsNewCart: يأخذ نسخة من المحتوى الحالي"
-    // And for "+", it says "زار + لإضافة سلة جديدة ... إنشاء سلة جديدة بعنوان... + التبديل إليها"
-    // Since saveAsNewCart takes a copy, if the current cart has items, creating a new cart copys them.
-    // But usually "+" means a completely fresh empty cart. 
-    // Let's create an empty cart by switching to default, then saveAsNewCart.
     const newName = `سلة ${new Date().toLocaleTimeString('ar-IQ', {hour: '2-digit', minute:'2-digit'})}`;
     
-    // Actually, saveCart from savedCarts.store takes items.
     const res = useSavedCartsStore.getState().saveCart(newName, [], 'amount', 0);
     if (res.success && res.newCartId) {
       switchToCart(res.newCartId);
@@ -49,7 +39,6 @@ export function SavedCartsTabs() {
     if (cartToDelete) {
       deleteCart(cartToDelete);
       if (activeCartId === cartToDelete) {
-        // switch to another cart, or default
         const remaining = useSavedCartsStore.getState().savedCarts;
         if (remaining.length > 0) {
           switchToCart(remaining[0].id);
@@ -99,11 +88,13 @@ export function SavedCartsTabs() {
           })}
           
           {savedCarts.length < 3 && (
-            <button 
+            <button
               onClick={handleAddCart}
-              className="w-12 h-10 flex items-center justify-center hover:bg-muted text-text-secondary transition-colors mb-[3px] rounded-t-lg shrink-0"
+              className="h-10 flex items-center gap-1.5 px-3 bg-accent text-white rounded-t-lg font-bold text-xs transition-colors hover:bg-accent-hover shrink-0 mb-[3px] whitespace-nowrap shadow-sm"
+              style={{ fontFamily: 'Tajawal, sans-serif' }}
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-4 h-4" />
+              زبون جديد
             </button>
           )}
         </div>

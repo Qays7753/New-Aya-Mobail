@@ -5,6 +5,7 @@ import { get } from 'idb-keyval';
 import { Shield, Clock, X } from 'lucide-react';
 import { toastSuccess, toastError } from '@/components/ui/toast';
 import { NumPad } from '@/components/ui/NumPad';
+import { useEscKey } from '@/hooks/useEscKey';
 
 interface AdminPinDialogProps {
   isOpen: boolean;
@@ -18,6 +19,8 @@ export function AdminPinDialog({ isOpen, onClose, onSuccess, title, description 
   const { grantAdminAccess } = useAuth();
   const [pin, setPin] = useState('');
   const [lockoutSecs, setLockoutSecs] = useState(0);
+
+  useEscKey(onClose, isOpen);
 
   useEffect(() => {
     if (!isOpen) {
@@ -69,7 +72,11 @@ export function AdminPinDialog({ isOpen, onClose, onSuccess, title, description 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" dir="rtl">
+    <div
+      className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in"
+      dir="rtl"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="bg-surface w-full max-w-sm rounded-[24px] p-6 shadow-xl relative animate-in zoom-in-95 flex flex-col items-center">
         <button
           onClick={onClose}

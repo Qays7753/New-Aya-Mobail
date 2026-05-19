@@ -16,6 +16,7 @@ export default function ExpensesPage() {
   const [categoryId, setCategoryId] = useState('');
   const [description, setDescription] = useState('');
   const [accountId, setAccountId] = useState('');
+  const [showAccountPicker, setShowAccountPicker] = useState(false);
   
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-01'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -35,9 +36,11 @@ export default function ExpensesPage() {
     queryFn: getActiveAccounts,
   });
 
+  // Auto-fill: prefer cash account
   useEffect(() => {
     if (accounts.length > 0 && !accountId) {
-      setAccountId(accounts[0].id);
+      const cashAcc = accounts.find(a => a.type === 'cash');
+      setAccountId((cashAcc || accounts[0]).id);
     }
   }, [accounts, accountId]);
 
@@ -47,10 +50,17 @@ export default function ExpensesPage() {
     }
   }, [categories, categoryId]);
 
+  // Reset account picker when form closes
+  useEffect(() => {
+    if (!isAddMode) setShowAccountPicker(false);
+  }, [isAddMode]);
+
+  const selectedAccount = accounts.find(a => a.id === accountId);
+
   const expenseMutation = useMutation({
     mutationFn: () => {
       const selectedCategory = categories.find(c => c.id === categoryId);
-      const selectedAccount = accounts.find(a => a.id === accountId);
+      const selectedAcc = accounts.find(a => a.id === accountId);
       
       return addExpense({
         amount: parseMoney(amountInput),
@@ -58,7 +68,7 @@ export default function ExpensesPage() {
         category_name: selectedCategory?.name || '',
         description,
         accountId: accountId,
-        account_name: selectedAccount?.name || ''
+        account_name: selectedAcc?.name || ''
       });
     },
     onSuccess: () => {
@@ -204,17 +214,46 @@ export default function ExpensesPage() {
                 />
               </div>
 
+              {/* Account — secondary/collapsible */}
               <div className="mb-6">
-                <label className="block text-sm font-medium mb-1">الدفع من حساب <span className="text-danger">*</span></label>
-                <select 
-                  value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                  className="w-full h-12 px-4 rounded-xl border border-border bg-background focus:border-accent outline-none font-medium"
-                >
-                  {accounts.map(acc => (
-                    <option key={acc.id} value={acc.id}>{acc.name} ({formatMoney(acc.balance)})</option>
-                  ))}
-                </select>
+                {!showAccountPicker ? (
+                  <div className="flex items-center justify-between bg-muted/40 px-3 py-2.5 rounded-xl border border-border text-sm">
+                    <span className="text-text-secondary">
+                      الحساب: <span className="font-medium text-text-primary">{selectedAccount?.name || '—'}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAccountPicker(true)}
+                      className="text-accent text-xs font-medium hover:underline ms-3 shrink-0"
+                      style={{ fontFamily: 'Tajawal, sans-serif' }}
+                    >
+                      تغيير
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-medium">الدفع من حساب <span className="text-danger">*</span></label>
+                      <button
+                        type="button"
+                        onClick={() => setShowAccountPicker(false)}
+                        className="text-text-secondary text-xs hover:text-accent transition-colors"
+                        style={{ fontFamily: 'Tajawal, sans-serif' }}
+                      >
+                        إخفاء ▲
+                      </button>
+                    </div>
+                    <select 
+                      value={accountId}
+                      onChange={(e) => { setAccountId(e.target.value); setShowAccountPicker(false); }}
+                      className="w-full h-12 px-4 rounded-xl border border-border bg-background focus:border-accent outline-none font-medium"
+                    >
+                      {accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.name} ({formatMoney(acc.balance)})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <button

@@ -1,4 +1,5 @@
 import { AlertTriangle } from 'lucide-react';
+import { useEscKey } from '@/hooks/useEscKey';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -21,6 +22,8 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  useEscKey(onCancel, open);
+
   if (!open) return null;
 
   return (

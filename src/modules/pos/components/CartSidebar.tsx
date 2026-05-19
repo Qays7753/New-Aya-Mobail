@@ -10,6 +10,7 @@ import { NumPad } from '@/components/ui/NumPad';
 import { useEffect } from 'react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useEscKey } from '@/hooks/useEscKey';
 
 // ─── ActionType ────────────────────────────────────────────────────────────────
 type ActionType = 'qty' | 'price';
@@ -41,6 +42,7 @@ function ActionDialog({
 
   const [digits, setDigits] = useState<string>(initDigits);
   const dialogRef = useFocusTrap(true);
+  useEscKey(onClose);
 
   const titles: Record<ActionType, string> = {
     qty: 'الكمية',
@@ -141,6 +143,7 @@ function LineDiscountDialog({
 
   const [digits, setDigits] = useState<string>(initDigits);
   const dialogRef = useFocusTrap(true);
+  useEscKey(onClose);
 
   const handleDigit = (d: string) => {
     if (d === '.') {
@@ -221,6 +224,7 @@ function GlobalDiscountAmountDialog({
   };
 
   const [digits, setDigits] = useState<string>(initDigits);
+  useEscKey(onClose);
 
   const handleDigit = (d: string) => {
     if (d === '.') {
@@ -533,7 +537,7 @@ export function CartSidebar() {
         </div>
 
         {/* ── Bottom fixed zone ── */}
-        <div className="shrink-0 border-t border-border bg-background flex flex-col gap-2 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:pb-3">
+        <div className="shrink-0 border-t border-border bg-background flex flex-col gap-2 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-3">
 
           {/* Totals */}
           <div className="space-y-1 text-sm">

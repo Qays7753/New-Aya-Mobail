@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getActiveAccounts } from '@/db/queries/accounts';
-import { dbClient } from '@/db/client'; // Assuming we can get suppliers directly or we should create a getSuppliers function.
-// Let's create getSuppliers query if not exist. For now, fetch direct.
+import { dbClient } from '@/db/client';
 import { createTopup } from '@/db/queries/operations';
 import { X, Save } from 'lucide-react';
 import { formatMoney, parseMoney } from '@/lib/money';
 import { toast } from 'sonner';
+import { useEscKey } from '@/hooks/useEscKey';
 
 export function TopupDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [accountId, setAccountId] = useState('');
@@ -16,6 +16,8 @@ export function TopupDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   const [notes, setNotes] = useState('');
   
   const queryClient = useQueryClient();
+
+  useEscKey(onClose, isOpen);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ['accounts'],
@@ -84,7 +86,10 @@ export function TopupDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="bg-background rounded-2xl w-full max-w-md shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="flex justify-between items-center p-4 border-b border-border bg-surface shrink-0">
           <h2 className="text-xl font-bold">شحن رصيد جديد</h2>

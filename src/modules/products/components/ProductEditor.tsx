@@ -10,6 +10,7 @@ import { IconPicker } from '@/components/products/IconPicker';
 import { ImageUploader } from '@/components/products/ImageUploader';
 import { saveProductImage, loadProductImage, deleteProductImage } from '@/lib/imageStorage';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useEscKey } from '@/hooks/useEscKey';
 
 interface ProductEditorProps {
   product: Product | null;
@@ -22,6 +23,8 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
   const isEditing = !!product;
   const { requireAdminAction } = useAuth();
   const [confirmToggle, setConfirmToggle] = useState(false);
+
+  useEscKey(onClose, isOpen);
 
   const { data: dbCategories = [] } = useQuery({
     queryKey: ['categories'],
@@ -150,7 +153,10 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm animate-in fade-in">
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm animate-in fade-in"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="w-full max-w-md bg-surface h-full shadow-2xl flex flex-col animate-in slide-in-from-right sm:border-l border-border">
         <div className="px-6 py-4 border-b border-border flex justify-between items-center bg-background">
           <h2 className="text-xl font-bold flex items-center gap-2">

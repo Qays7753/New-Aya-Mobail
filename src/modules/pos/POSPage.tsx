@@ -27,8 +27,8 @@ export default function POSPage() {
   return (
     <div className="h-full flex relative overflow-hidden bg-background">
 
-      {/* ── Desktop Cart Sidebar — 360px, RIGHT side (first in RTL flex) ── */}
-      <div className="hidden lg:flex w-[360px] shrink-0 h-full border-e border-border bg-surface shadow-[4px_0_15px_-5px_rgba(0,0,0,0.05)] z-10 flex-col">
+      {/* ── Tablet/Desktop Cart Sidebar — 360px, RIGHT side (first in RTL flex) ── */}
+      <div className="hidden md:flex w-[360px] shrink-0 h-full border-e border-border bg-surface shadow-[4px_0_15px_-5px_rgba(0,0,0,0.05)] z-10 flex-col">
         <CartSidebar />
       </div>
 
@@ -46,7 +46,7 @@ export default function POSPage() {
           >
             <Home className="w-5 h-5" />
           </button>
-          <div className="flex-1 min-w-0 border-s border-border lg:border-s lg:border-border">
+          <div className="flex-1 min-w-0 border-s border-border">
             <SavedCartsTabs />
           </div>
         </div>
@@ -56,12 +56,12 @@ export default function POSPage() {
         </div>
       </div>
 
-      {/* ── Mobile Cart Button ── */}
+      {/* ── Mobile Cart Button (phones only, < 768px) ── */}
       {!showMobileCart && totalItems > 0 && (
         <button
           onClick={() => setShowMobileCart(true)}
           className={cn(
-            "lg:hidden absolute bottom-[calc(env(safe-area-inset-bottom)+1rem)] start-1/2 -translate-x-1/2 bg-text-primary text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 font-bold z-20 animate-in slide-in-from-bottom transition-transform",
+            "md:hidden absolute bottom-[calc(env(safe-area-inset-bottom)+1rem)] start-1/2 -translate-x-1/2 bg-text-primary text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 font-bold z-20 animate-in slide-in-from-bottom transition-transform",
             pulse && "scale-110"
           )}
           style={{ touchAction: 'manipulation' }}
@@ -79,9 +79,9 @@ export default function POSPage() {
         </button>
       )}
 
-      {/* ── Mobile Cart Overlay (bottom sheet) ── */}
+      {/* ── Mobile Cart Overlay — bottom sheet on phones ── */}
       {showMobileCart && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-background flex flex-col animate-in slide-in-from-bottom">
+        <div className="md:hidden fixed inset-0 z-50 bg-background flex flex-col animate-in slide-in-from-bottom">
           <div className="p-3 flex items-center justify-between border-b border-border bg-surface shrink-0 gap-2">
             <button
               onClick={() => setShowMobileCart(false)}

@@ -4,6 +4,7 @@ import { getExpenseCategories, addExpenseCategory, updateExpenseCategory, Expens
 import { Plus, CheckCircle, Edit2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { useEscKey } from '@/hooks/useEscKey';
 
 interface ExpenseCategoriesDialogProps {
   isOpen: boolean;
@@ -18,6 +19,8 @@ export function ExpenseCategoriesDialog({ isOpen, onClose }: ExpenseCategoriesDi
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newCat, setNewCat] = useState({ name: '', type: 'variable' as 'fixed' | 'variable', sort_order: 0 });
   const [editCat, setEditCat] = useState<Partial<ExpenseCategory>>({});
+
+  useEscKey(onClose, isOpen);
 
   const { data: categories = [], isLoading } = useQuery({
     queryKey: ['all-expense-categories'],
@@ -66,7 +69,10 @@ export function ExpenseCategoriesDialog({ isOpen, onClose }: ExpenseCategoriesDi
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="bg-surface rounded-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
         <div className="flex justify-between items-center p-4 border-b border-border">
           <h2 className="text-xl font-bold">إدارة فئات المصروفات</h2>
