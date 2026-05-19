@@ -1,6 +1,5 @@
 import { dbClient } from '../client';
 import { nanoid } from 'nanoid';
-import { logAudit } from './audit';
 
 export interface Product {
   id: string;
@@ -8,7 +7,6 @@ export interface Product {
   sku: string | null;
   category: 'device' | 'sim' | 'service_general' | 'service_repair' | 'accessory' | 'package';
   sale_price: number;
-  cost_price: number;
   stock_qty: number;
   min_stock: number;
   track_stock: boolean;
@@ -39,7 +37,6 @@ export async function getActiveProducts(search?: string, category?: string): Pro
   
   return results.map(row => ({
     ...row,
-    cost_price: row.cost_price ?? 0,
     track_stock: Boolean(row.track_stock),
     is_quick_add: Boolean(row.is_quick_add),
     is_active: Boolean(row.is_active)
@@ -70,26 +67,9 @@ export async function getAllProducts(search?: string, category?: string, showIna
   
   return results.map(row => ({
     ...row,
-    cost_price: row.cost_price ?? 0,
     track_stock: Boolean(row.track_stock),
     is_quick_add: Boolean(row.is_quick_add),
     is_active: Boolean(row.is_active)
-  }));
-}
-
-export async function getLowStockProducts(): Promise<Product[]> {
-  const results = await dbClient.query(
-    `SELECT * FROM products
-     WHERE is_active = 1 AND track_stock = 1 AND stock_qty <= min_stock
-     ORDER BY stock_qty ASC`,
-    []
-  );
-  return results.map(row => ({
-    ...row,
-    cost_price: row.cost_price ?? 0,
-    track_stock: Boolean(row.track_stock),
-    is_quick_add: Boolean(row.is_quick_add),
-    is_active: Boolean(row.is_active),
   }));
 }
 
@@ -99,12 +79,11 @@ export async function addProduct(data: Omit<Product, 'id' | 'is_active'>) {
   
   try {
     await dbClient.run(
-      `INSERT INTO products (id, name, sku, category, sale_price, cost_price, stock_qty, min_stock, track_stock, is_quick_add, is_active, notes, image_path, icon, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+      `INSERT INTO products (id, name, sku, category, sale_price, stock_qty, min_stock, track_stock, is_quick_add, is_active, notes, image_path, icon, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
       [
-        id, data.name, data.sku || null, data.category, data.sale_price,
-        data.cost_price ?? 0,
-        data.stock_qty, data.min_stock, data.track_stock ? 1 : 0,
+        id, data.name, data.sku || null, data.category, data.sale_price, 
+        data.stock_qty, data.min_stock, data.track_stock ? 1 : 0, 
         data.is_quick_add ? 1 : 0, data.notes || null, data.image_path || null, data.icon || 'Box', now, now
       ]
     );
@@ -121,13 +100,6 @@ export async function updateProduct(id: string, data: Partial<Omit<Product, 'id'
   const now = new Date().toISOString();
   const updates: string[] = [];
   const params: any[] = [];
-
-  // Capture old price for audit log
-  let oldSalePrice: number | undefined;
-  if (data.sale_price !== undefined) {
-    const rows = await dbClient.query(`SELECT name, sale_price FROM products WHERE id = ?`, [id]);
-    if (rows.length > 0) oldSalePrice = rows[0].sale_price;
-  }
 
   for (const [key, value] of Object.entries(data)) {
     if (value !== undefined) {
@@ -151,16 +123,6 @@ export async function updateProduct(id: string, data: Partial<Omit<Product, 'id'
       `UPDATE products SET ${updates.join(', ')} WHERE id = ?`,
       params
     );
-
-    if (data.sale_price !== undefined && oldSalePrice !== undefined && data.sale_price !== oldSalePrice) {
-      const rows = await dbClient.query(`SELECT name FROM products WHERE id = ?`, [id]);
-      const productName = rows[0]?.name ?? id;
-      await logAudit(
-        'تعديل_سعر_منتج',
-        `${productName}: ${oldSalePrice / 100} → ${data.sale_price / 100} د.أ`,
-        'product', id
-      );
-    }
   } catch (err: any) {
     if (err.message?.includes('UNIQUE constraint failed: products.sku')) {
       throw new Error('رمز الباركود (SKU) مستخدم مسبقاً لصنف آخر');
@@ -174,4 +136,44 @@ export async function toggleProductActive(id: string, isActive: boolean) {
     `UPDATE products SET is_active = ?, updated_at = ? WHERE id = ?`,
     [isActive ? 1 : 0, new Date().toISOString(), id]
   );
+}
+
+// Temporary seed function for development
+export async function seedProductsIfEmpty() {
+  const count = await dbClient.query('SELECT COUNT(*) as count FROM products');
+  if (count[0].count === 0) {
+    const stmts = [
+      {
+        sql: `INSERT INTO products (id, name, sku, category, sale_price, stock_qty, min_stock, track_stock, is_quick_add, is_active, created_at, updated_at) 
+              VALUES ('1', 'شاحن أيفون أصلي', 'APL-CHG', 'accessory', 15000, 50, 5, 1, 1, 1, datetime('now'), datetime('now'))`
+      },
+      {
+        sql: `INSERT INTO products (id, name, sku, category, sale_price, stock_qty, min_stock, track_stock, is_quick_add, is_active, created_at, updated_at) 
+              VALUES ('2', 'حماية شاشة أيفون 13', 'SCR-IP13', 'accessory', 5000, 100, 10, 1, 1, 1, datetime('now'), datetime('now'))`
+      },
+      {
+        sql: `INSERT INTO products (id, name, sku, category, sale_price, stock_qty, min_stock, track_stock, is_quick_add, is_active, created_at, updated_at) 
+              VALUES ('3', 'خدمة فورمات وتنظيف', 'SRV-FMT', 'service_general', 10000, 0, 0, 0, 0, 1, datetime('now'), datetime('now'))`
+      },
+      {
+        sql: `INSERT INTO products (id, name, sku, category, sale_price, stock_qty, min_stock, track_stock, is_quick_add, is_active, created_at, updated_at) 
+              VALUES ('4', 'شريحة اتصال انترنت', 'SIM-NET', 'sim', 3000, 20, 5, 1, 0, 1, datetime('now'), datetime('now'))`
+      }
+    ];
+
+    // Also seed a default un-deletable Cash Account if no accounts exist
+    const accCount = await dbClient.query('SELECT COUNT(*) as count FROM accounts');
+    if (accCount[0].count === 0) {
+      stmts.push({
+        sql: `INSERT INTO accounts (id, name, type, balance, fee_percent, is_active, sort_order, created_at)
+              VALUES ('acc-cash-1', 'الصندوق المالي (نقد)', 'cash', 0, 0, 1, 1, datetime('now'))`
+      });
+      stmts.push({
+        sql: `INSERT INTO accounts (id, name, type, balance, fee_percent, is_active, sort_order, created_at)
+              VALUES ('acc-bank-1', 'حساب بنكي', 'bank', 0, 0, 1, 2, datetime('now'))`
+      });
+    }
+
+    await dbClient.batchRun(stmts);
+  }
 }

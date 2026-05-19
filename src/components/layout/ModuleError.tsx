@@ -1,10 +1,8 @@
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { FallbackProps } from 'react-error-boundary';
 
-export function ModuleError({ error, resetErrorBoundary }: FallbackProps) {
+export function ModuleError({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) {
   const navigate = useNavigate();
-  const errorMessage = error instanceof Error ? error.message : String(error);
 
   return (
     <div className="flex flex-col items-center justify-center p-6 min-h-[50vh]">
@@ -21,9 +19,9 @@ export function ModuleError({ error, resetErrorBoundary }: FallbackProps) {
           يمكنك المحاولة مرة أخرى أو العودة للصفحة الرئيسية.
         </p>
 
-        {error != null && (
-          <div className="w-full bg-gray-50 p-4 rounded-xl text-start font-mono text-xs text-gray-600 overflow-x-auto mb-8 whitespace-pre-wrap shrink-0 max-h-32 overflow-y-auto" dir="ltr">
-            {errorMessage}
+        {error && (
+          <div className="w-full bg-gray-50 p-4 rounded-xl text-left font-mono text-xs text-gray-600 overflow-x-auto mb-8 whitespace-pre-wrap shrink-0 max-h-32 overflow-y-auto" dir="ltr">
+            {error.message}
           </div>
         )}
         

@@ -1,4 +1,5 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import React from 'react';
+import { Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { AdminGate } from '@/components/auth/AdminGate';
 
 export function ProtectedRoute() {

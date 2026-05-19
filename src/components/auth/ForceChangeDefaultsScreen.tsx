@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { hashCode } from '@/lib/auth';
 import { set } from 'idb-keyval';
-import { Shield, Key } from 'lucide-react';
+import { Shield, Key, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { NumPad } from '@/components/ui/NumPad';
@@ -14,26 +14,12 @@ export function ForceChangeDefaultsScreen() {
   const [error, setError] = useState('');
   const [isConfirming, setIsConfirming] = useState(false);
 
-  useEffect(() => {
-    if (newCode.length === 4 && !isConfirming) {
-      handleNext();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newCode]);
-
-  useEffect(() => {
-    if (confirmCode.length === 4 && isConfirming) {
-      handleNext();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmCode]);
-
   const handleNumber = (num: string) => {
     setError('');
     if (!isConfirming) {
-      if (newCode.length < 4) setNewCode(prev => prev + num);
+      if (newCode.length < 4) setNewCode(newCode + num);
     } else {
-      if (confirmCode.length < 4) setConfirmCode(prev => prev + num);
+      if (confirmCode.length < 4) setConfirmCode(confirmCode + num);
     }
   };
 

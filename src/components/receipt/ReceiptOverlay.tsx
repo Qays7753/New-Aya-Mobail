@@ -1,8 +1,8 @@
+import React from 'react';
 import { X } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { format } from 'date-fns';
 import { useSettingsStore } from '@/stores/settings.store';
-import { useEscKey } from '@/hooks/useEscKey';
 
 interface ReceiptOverlayProps {
   isOpen: boolean;
@@ -12,8 +12,6 @@ interface ReceiptOverlayProps {
 
 export function ReceiptOverlay({ isOpen, onClose, invoice }: ReceiptOverlayProps) {
   const { settings } = useSettingsStore();
-
-  useEscKey(onClose, isOpen);
 
   if (!isOpen || !invoice) return null;
 

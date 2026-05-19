@@ -1,19 +1,21 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { ProductGrid } from "./components/ProductGrid";
 import { CartSidebar } from "./components/CartSidebar";
 import { SavedCartsTabs } from "./components/SavedCartsTabs";
+import { seedProductsIfEmpty } from "@/db/queries/products";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCartStore } from "@/stores/cart.store";
+import { useUIStore } from "@/stores/ui.store";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
-import { ShoppingCart, X, Home } from "lucide-react";
+import { ShoppingCart, X } from "lucide-react";
 
 export default function POSPage() {
-  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [showMobileCart, setShowMobileCart] = useState(false);
   const { items, getTotal, pulseTrigger } = useCartStore();
   const [pulse, setPulse] = useState(false);
-
+  
   useEffect(() => {
     if (pulseTrigger > 0) {
       setPulse(true);
@@ -22,49 +24,43 @@ export default function POSPage() {
     }
   }, [pulseTrigger]);
 
+  useEffect(() => {
+    // Seed test products on mount
+    seedProductsIfEmpty().then(() => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    });
+  }, [queryClient]);
+
+  useEffect(() => {
+    useUIStore.getState().setSideRailMode('collapsed');
+    return () => {
+      useUIStore.getState().setSideRailMode('auto');
+    };
+  }, []);
+
+  // Mobile Floating Cart Button
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <div className="h-full flex relative overflow-hidden bg-background">
-
-      {/* ── Tablet/Desktop Cart Sidebar — 360px, RIGHT side (first in RTL flex) ── */}
-      <div className="hidden md:flex w-[360px] shrink-0 h-full border-e border-border bg-surface shadow-[4px_0_15px_-5px_rgba(0,0,0,0.05)] z-10 flex-col">
-        <CartSidebar />
-      </div>
-
-      {/* ── Main Products Area — fills remaining space, LEFT side ── */}
-      <div className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
-
-        {/* ── Top bar: Home button + SavedCartsTabs ── */}
-        <div className="flex items-center shrink-0 border-b border-border bg-background">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="flex w-11 h-11 shrink-0 mx-2 items-center justify-center rounded-lg border border-border bg-surface text-text-secondary hover:text-text-primary hover:border-accent transition-colors shadow-sm"
-            title="العودة للرئيسية"
-            aria-label="العودة للرئيسية"
-            style={{ touchAction: 'manipulation', userSelect: 'none', minWidth: 44, minHeight: 44 }}
-          >
-            <Home className="w-5 h-5" />
-          </button>
-          <div className="flex-1 min-w-0 border-s border-border">
-            <SavedCartsTabs />
-          </div>
-        </div>
-
+      {/* Main Content (Products) */}
+      <div className="flex-1 min-w-0 h-full flex flex-col">
+        <SavedCartsTabs />
         <div className="flex-1 overflow-hidden min-h-0">
           <ProductGrid />
         </div>
       </div>
 
-      {/* ── Mobile Cart Button (phones only, < 768px) ── */}
+      {/* Desktop Cart Sidebar */}
+      <div className="hidden lg:block w-[340px] shrink-0 h-full border-s border-border bg-surface shadow-[-4px_0_15px_-5px_rgba(0,0,0,0.05)] z-10">
+        <CartSidebar />
+      </div>
+
+      {/* Mobile Cart Button */}
       {!showMobileCart && totalItems > 0 && (
         <button
           onClick={() => setShowMobileCart(true)}
-          className={cn(
-            "md:hidden absolute bottom-[calc(env(safe-area-inset-bottom)+1rem)] start-1/2 -translate-x-1/2 bg-text-primary text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 font-bold z-20 animate-in slide-in-from-bottom transition-transform",
-            pulse && "scale-110"
-          )}
-          style={{ touchAction: 'manipulation' }}
+          className={cn("lg:hidden absolute bottom-[calc(env(safe-area-inset-bottom)+5rem)] start-1/2 -translate-x-1/2 bg-text-primary text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 font-bold z-20 animate-in slide-in-from-bottom transition-transform", pulse && "scale-110")}
         >
           <div className="relative">
             <ShoppingCart className="w-6 h-6" />
@@ -79,19 +75,17 @@ export default function POSPage() {
         </button>
       )}
 
-      {/* ── Mobile Cart Overlay — bottom sheet on phones ── */}
+      {/* Mobile Cart Overlay */}
       {showMobileCart && (
-        <div className="md:hidden fixed inset-0 z-50 bg-background flex flex-col animate-in slide-in-from-bottom">
-          <div className="p-3 flex items-center justify-between border-b border-border bg-surface shrink-0 gap-2">
+        <div className="lg:hidden fixed inset-0 z-50 bg-background flex flex-col animate-in slide-in-from-bottom">
+          <div className="p-4 flex items-center justify-between border-b border-border bg-surface shrink-0">
+            <h2 className="text-xl font-bold">عربة التسوق</h2>
             <button
               onClick={() => setShowMobileCart(false)}
-              className="flex items-center gap-1.5 h-9 px-3 bg-muted hover:bg-border rounded-lg text-sm font-bold text-text-primary transition-colors shrink-0"
-              style={{ touchAction: 'manipulation', fontFamily: 'Tajawal, sans-serif' }}
+              className="p-2 hover:bg-muted rounded-full"
             >
-              <X className="w-4 h-4" />
-              متابعة التسوق
+              <X className="w-6 h-6 text-text-secondary" />
             </button>
-            <h2 className="text-base font-bold" style={{ fontFamily: 'Tajawal, sans-serif' }}>السلة</h2>
           </div>
           <div className="flex-1 overflow-hidden">
             <CartSidebar />

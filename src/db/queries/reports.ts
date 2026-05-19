@@ -1,213 +1,108 @@
 import { dbClient } from '../client';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 
-const CATEGORY_NAMES: Record<string, string> = {
-  device: 'أجهزة',
-  sim: 'شرائح اتصال',
-  service_general: 'خدمات عامة',
-  service_repair: 'خدمات صيانة',
-  accessory: 'إكسسوارات',
-  package: 'باقات',
-};
+export async function getComprehensiveMonthlyReport(monthDate: Date = new Date()) {
+  const startDateStr = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+  const endDateStr = format(endOfMonth(monthDate), 'yyyy-MM-dd');
 
-export function categoryLabel(cat: string | null | undefined): string {
-  if (!cat) return 'غير مصنف';
-  return CATEGORY_NAMES[cat] || cat;
-}
+  // get all days in the month
+  const daysInMonth = eachDayOfInterval({
+    start: startOfMonth(monthDate),
+    end: endOfMonth(monthDate)
+  }).map(d => format(d, 'yyyy-MM-dd'));
 
-export async function getReport(fromDate: string, toDate: string) {
-  // 1. KPIs — active invoices only
-  const [kpiRow] = await dbClient.query(
-    `SELECT
-       COALESCE(SUM(i.total_amount), 0)    AS total_sales,
-       COALESCE(SUM(i.discount_amount), 0) AS total_discounts,
-       COUNT(DISTINCT i.id)                AS invoice_count,
-       COALESCE(AVG(i.total_amount), 0)    AS avg_invoice,
-       COALESCE(SUM(ii.quantity), 0)       AS total_qty,
-       COALESCE(SUM(ii.unit_cost * ii.quantity), 0) AS total_cost
-     FROM invoices i
-     LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
-     WHERE i.invoice_date BETWEEN ? AND ? AND i.status = 'active'`,
-    [fromDate, toDate]
-  );
+  // 1. Get daily sales
+  const salesQuery = `
+    SELECT invoice_date as date, 
+           SUM(total_amount) as total_sales,
+           SUM(paid_amount) as paid_amount,
+           SUM(discount_amount) as discount_amount
+    FROM invoices 
+    WHERE invoice_date BETWEEN ? AND ? AND status != 'cancelled'
+    GROUP BY invoice_date
+  `;
+  const salesResult = await dbClient.query(salesQuery, [startDateStr, endDateStr]);
 
-  // 2. Total expenses
-  const [expRow] = await dbClient.query(
-    `SELECT COALESCE(SUM(amount), 0) AS total_expenses
-     FROM expenses WHERE expense_date BETWEEN ? AND ?`,
-    [fromDate, toDate]
-  );
+  // 2. Get daily expenses
+  const expensesQuery = `
+    SELECT expense_date as date, 
+           SUM(amount) as total_expenses
+    FROM expenses 
+    WHERE expense_date BETWEEN ? AND ?
+    GROUP BY expense_date
+  `;
+  const expResult = await dbClient.query(expensesQuery, [startDateStr, endDateStr]);
 
-  // 3. Returns
-  const [retRow] = await dbClient.query(
-    `SELECT COUNT(id) AS return_count, COALESCE(SUM(total_amount), 0) AS return_value
-     FROM invoices WHERE invoice_date BETWEEN ? AND ? AND status = 'returned'`,
-    [fromDate, toDate]
-  );
+  // 3. Sales By Category
+  const salesByCategoryQuery = `
+    SELECT c.name as category, SUM(ii.total_price) as total
+    FROM invoice_items ii
+    JOIN invoices i ON ii.invoice_id = i.id
+    JOIN products p ON ii.product_id = p.id
+    LEFT JOIN categories c ON p.category_id = c.id
+    WHERE i.invoice_date BETWEEN ? AND ? AND i.status != 'cancelled'
+    GROUP BY c.name
+    ORDER BY total DESC
+  `;
+  const salesByCategory = await dbClient.query(salesByCategoryQuery, [startDateStr, endDateStr]);
 
-  // 4. Gift cost — cost of goods given as gifts (0 revenue, full cost reduces profit)
-  const [giftRow] = await dbClient.query(
-    `SELECT COALESCE(SUM(ii.unit_cost * ii.quantity), 0) AS gift_cost
-     FROM invoice_items ii
-     JOIN invoices i ON ii.invoice_id = i.id
-     WHERE i.invoice_date BETWEEN ? AND ? AND i.status = 'active' AND ii.is_gift = 1`,
-    [fromDate, toDate]
-  );
+  // 4. Top Products
+  const topProductsQuery = `
+    SELECT p.name, SUM(ii.quantity) as qty, SUM(ii.total_price) as total
+    FROM invoice_items ii
+    JOIN invoices i ON ii.invoice_id = i.id
+    JOIN products p ON ii.product_id = p.id
+    WHERE i.invoice_date BETWEEN ? AND ? AND i.status != 'cancelled'
+    GROUP BY p.id
+    ORDER BY total DESC
+    LIMIT 10
+  `;
+  const topProducts = await dbClient.query(topProductsQuery, [startDateStr, endDateStr]);
 
-  const totalSales = kpiRow?.total_sales ?? 0;
-  const totalDiscounts = kpiRow?.total_discounts ?? 0;
-  const invoiceCount = kpiRow?.invoice_count ?? 0;
-  const avgInvoice = kpiRow?.avg_invoice ?? 0;
-  const totalQty = kpiRow?.total_qty ?? 0;
-  const totalCost = kpiRow?.total_cost ?? 0;
-  const grossProfit = totalSales - totalCost;
-  const totalExpenses = expRow?.total_expenses ?? 0;
-  const netProfit = grossProfit - totalExpenses;
-  const returnCount = retRow?.return_count ?? 0;
-  const returnValue = retRow?.return_value ?? 0;
-  const giftCost = giftRow?.gift_cost ?? 0;
+  // 5. Expenses By Category
+  const expensesByCategoryQuery = `
+    SELECT ec.name as category, SUM(e.amount) as total
+    FROM expenses e
+    LEFT JOIN expense_categories ec ON e.category_id = ec.id
+    WHERE e.expense_date BETWEEN ? AND ?
+    GROUP BY ec.name
+    ORDER BY total DESC
+  `;
+  const expensesByCategory = await dbClient.query(expensesByCategoryQuery, [startDateStr, endDateStr]);
 
-  // 5. Sales by category (snapshot)
-  const byCategoryRaw = await dbClient.query(
-    `SELECT
-       ii.product_category               AS category,
-       COALESCE(SUM(ii.line_total), 0)  AS revenue,
-       COALESCE(SUM(ii.unit_cost * ii.quantity), 0) AS cost,
-       COALESCE(SUM(ii.quantity), 0)    AS qty
-     FROM invoice_items ii
-     JOIN invoices i ON ii.invoice_id = i.id
-     WHERE i.invoice_date BETWEEN ? AND ? AND i.status = 'active'
-     GROUP BY ii.product_category
-     ORDER BY revenue DESC`,
-    [fromDate, toDate]
-  );
+  // Map to a dictionary for fast lookup
+  const salesMap: Record<string, any> = {};
+  salesResult.forEach(s => { salesMap[s.date] = s; });
 
-  const salesByCategory = byCategoryRaw.map((r: any) => ({
-    category: categoryLabel(r.category),
-    revenue: r.revenue,
-    cost: r.cost,
-    profit: r.revenue - r.cost,
-    qty: r.qty,
-  }));
+  const expMap: Record<string, any> = {};
+  expResult.forEach(e => { expMap[e.date] = e; });
 
-  // 6. Top 10 products by revenue
-  const topProductsRaw = await dbClient.query(
-    `SELECT
-       ii.product_name                   AS name,
-       COALESCE(SUM(ii.quantity), 0)    AS qty,
-       COALESCE(SUM(ii.line_total), 0)  AS revenue,
-       COALESCE(SUM(ii.unit_cost * ii.quantity), 0) AS cost
-     FROM invoice_items ii
-     JOIN invoices i ON ii.invoice_id = i.id
-     WHERE i.invoice_date BETWEEN ? AND ? AND i.status = 'active'
-     GROUP BY ii.product_name
-     ORDER BY revenue DESC
-     LIMIT 10`,
-    [fromDate, toDate]
-  );
-
-  const topProducts = topProductsRaw.map((r: any) => ({
-    name: r.name,
-    qty: r.qty,
-    revenue: r.revenue,
-    cost: r.cost,
-    profit: r.revenue - r.cost,
-  }));
-
-  // 7. Sales by payment account
-  const byAccountRaw = await dbClient.query(
-    `SELECT
-       a.name AS account_name,
-       a.type AS account_type,
-       COALESCE(SUM(ip.amount), 0) AS amount
-     FROM invoice_payments ip
-     JOIN accounts a ON ip.account_id = a.id
-     JOIN invoices i ON ip.invoice_id = i.id
-     WHERE i.invoice_date BETWEEN ? AND ? AND i.status = 'active' AND ip.amount > 0
-     GROUP BY a.id, a.name, a.type
-     ORDER BY amount DESC`,
-    [fromDate, toDate]
-  );
-
-  // 8. Daily breakdown (sales)
-  const dailySalesRaw = await dbClient.query(
-    `SELECT
-       i.invoice_date AS date,
-       COALESCE(SUM(i.total_amount), 0)    AS sales,
-       COALESCE(SUM(i.discount_amount), 0) AS discounts,
-       COALESCE(SUM(ii.unit_cost * ii.quantity), 0) AS cost
-     FROM invoices i
-     LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
-     WHERE i.invoice_date BETWEEN ? AND ? AND i.status = 'active'
-     GROUP BY i.invoice_date
-     ORDER BY i.invoice_date ASC`,
-    [fromDate, toDate]
-  );
-
-  // Daily expenses
-  const dailyExpRaw = await dbClient.query(
-    `SELECT expense_date AS date, COALESCE(SUM(amount), 0) AS expenses
-     FROM expenses WHERE expense_date BETWEEN ? AND ?
-     GROUP BY expense_date`,
-    [fromDate, toDate]
-  );
-
-  const salesDayMap: Record<string, any> = {};
-  dailySalesRaw.forEach((r: any) => { salesDayMap[r.date] = r; });
-  const expDayMap: Record<string, any> = {};
-  dailyExpRaw.forEach((r: any) => { expDayMap[r.date] = r; });
-
-  const allDays = Array.from(new Set([...Object.keys(salesDayMap), ...Object.keys(expDayMap)])).sort();
-  const daily = allDays.map(date => {
-    const s = salesDayMap[date] ?? { sales: 0, discounts: 0, cost: 0 };
-    const e = expDayMap[date] ?? { expenses: 0 };
+  const dailyReport = daysInMonth.map(dateStr => {
+    const s = salesMap[dateStr] || { total_sales: 0, paid_amount: 0, discount_amount: 0 };
+    const e = expMap[dateStr] || { total_expenses: 0 };
     return {
-      date,
-      sales: s.sales,
-      discounts: s.discounts,
-      cost: s.cost,
-      expenses: e.expenses,
-      grossProfit: s.sales - s.cost,
-      netProfit: s.sales - s.cost - e.expenses,
+      date: dateStr,
+      sales: s.total_sales,
+      paid_sales: s.paid_amount,
+      discount: s.discount_amount,
+      expenses: e.total_expenses,
+      netProfit: s.total_sales - e.total_expenses
     };
   });
 
-  // 9. Expenses by category
-  const expByCatRaw = await dbClient.query(
-    `SELECT ec.name AS category, COALESCE(SUM(e.amount), 0) AS total
-     FROM expenses e
-     LEFT JOIN expense_categories ec ON e.category_id = ec.id
-     WHERE e.expense_date BETWEEN ? AND ?
-     GROUP BY ec.name
-     ORDER BY total DESC`,
-    [fromDate, toDate]
-  );
+  const totals = dailyReport.reduce((acc, curr) => ({
+    sales: acc.sales + curr.sales,
+    paid_sales: acc.paid_sales + curr.paid_sales,
+    expenses: acc.expenses + curr.expenses,
+    netProfit: acc.netProfit + curr.netProfit,
+    discount: acc.discount + curr.discount,
+  }), { sales: 0, paid_sales: 0, expenses: 0, netProfit: 0, discount: 0 });
 
-  const expensesByCategory = expByCatRaw.map((r: any) => ({
-    category: r.category || 'غير مصنف',
-    total: r.total,
-  }));
-
-  return {
-    kpi: {
-      totalSales,
-      totalDiscounts,
-      invoiceCount,
-      avgInvoice,
-      totalQty,
-      totalCost,
-      grossProfit,
-      totalExpenses,
-      netProfit,
-      returnCount,
-      returnValue,
-      giftCost,
-    },
+  return { 
+    dailyReport: dailyReport.reverse(), 
+    totals,
     salesByCategory,
     topProducts,
-    byAccount: byAccountRaw,
-    daily,
-    expensesByCategory,
+    expensesByCategory
   };
 }
-
-export type ReportData = Awaited<ReturnType<typeof getReport>>;

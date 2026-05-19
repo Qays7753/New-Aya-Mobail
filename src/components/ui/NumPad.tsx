@@ -6,85 +6,39 @@ interface NumPadProps {
   onClear: () => void;
   onSubmit: () => void;
   submitDisabled?: boolean;
-  allowDecimal?: boolean;
 }
 
-export const NumPad: React.FC<NumPadProps> = ({
-  onDigit,
-  onClear,
-  onSubmit,
-  submitDisabled = false,
-  allowDecimal = false,
-}) => {
-  const Btn = ({
-    children,
-    onClick,
-    className = '',
-    disabled = false,
-    label,
-  }: {
-    children: React.ReactNode;
-    onClick: () => void;
-    className?: string;
-    disabled?: boolean;
-    label: string;
-  }) => (
+export const NumPad: React.FC<NumPadProps> = ({ onDigit, onClear, onSubmit, submitDisabled = false }) => {
+  const Button = ({ children, onClick, className = '', disabled = false }: any) => (
     <button
-      type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={label}
-      className={`w-20 h-20 rounded-full flex justify-center items-center text-2xl font-bold bg-white border border-gray-200 transition-colors hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}
+      className={`w-20 h-20 rounded-full flex justify-center items-center text-2xl font-bold bg-white border border-gray-200 transition-colors hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
     >
       {children}
     </button>
   );
 
-  const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-
-  if (allowDecimal) {
-    return (
-      <div className="flex flex-col gap-5 items-center" dir="ltr">
-        <div className="grid grid-cols-3 gap-6 place-items-center">
-          {digits.map((num) => (
-            <Btn key={num} onClick={() => onDigit(num.toString())} label={`رقم ${num}`}>{num}</Btn>
-          ))}
-          <Btn onClick={() => onDigit('.')} className="text-xl font-black" label="نقطة عشرية">.</Btn>
-          <Btn onClick={() => onDigit('0')} label="رقم 0">0</Btn>
-          <Btn onClick={onClear} className="text-red-500" label="حذف آخر رقم">
-            <Delete className="w-8 h-8" />
-          </Btn>
-        </div>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={submitDisabled}
-          aria-label="تأكيد"
-          className="w-full h-14 rounded-2xl flex justify-center items-center font-bold bg-[#CF694A] text-white hover:bg-[#b0583e] active:bg-[#974b34] disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2"
-        >
-          <Check className="w-7 h-7" />
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="grid grid-cols-3 gap-6 place-items-center" dir="ltr">
-      {digits.map((num) => (
-        <Btn key={num} onClick={() => onDigit(num.toString())} label={`رقم ${num}`}>{num}</Btn>
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+        <Button key={num} onClick={() => onDigit(num.toString())}>
+          {num}
+        </Button>
       ))}
-      <Btn onClick={onClear} className="text-red-500" label="حذف آخر رقم">
+      <Button onClick={onClear} className="text-red-500">
         <Delete className="w-8 h-8" />
-      </Btn>
-      <Btn onClick={() => onDigit('0')} label="رقم 0">0</Btn>
-      <Btn
-        onClick={onSubmit}
+      </Button>
+      <Button onClick={() => onDigit('0')}>
+        0
+      </Button>
+      <Button 
+        onClick={onSubmit} 
         disabled={submitDisabled}
         className="bg-[#CF694A] border-none text-white hover:bg-[#b0583e] active:bg-[#974b34]"
-        label="تأكيد"
       >
         <Check className="w-8 h-8" />
-      </Btn>
+      </Button>
     </div>
   );
 };

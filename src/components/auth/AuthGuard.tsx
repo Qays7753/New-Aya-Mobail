@@ -28,10 +28,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       {pendingAdminAction && (
         <AdminPinDialog
           isOpen={true}
-          onClose={() => {
-            clearPendingAdminAction();
-            window.history.back();
-          }}
+          onClose={clearPendingAdminAction}
           onSuccess={() => {
             pendingAdminAction();
             clearPendingAdminAction();

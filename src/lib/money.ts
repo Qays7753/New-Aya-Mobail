@@ -26,8 +26,7 @@ export function applyPercent(amount: number, percent: number): number {
 }
 
 // 5. Format money for user display
-// Default currency: د.أ (Jordanian Dinar)
-export function formatMoney(fils: number, currency = 'د.أ'): string {
+export function formatMoney(fils: number, currency = ''): string {
   const value = fils / 100;
   // Use "en-US" to keep western numbers (as requested: 1234 not ١٢٣٤)
   const formatted = value.toLocaleString('en-US', {

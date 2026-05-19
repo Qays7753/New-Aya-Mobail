@@ -1,5 +1,4 @@
 import { get, set } from 'idb-keyval';
-import { logAudit } from '@/db/queries/audit';
 
 // Uses PBKDF2 with SHA-256, 200,000 iterations, 16-byte salt
 async function deriveKey(pin: string, saltHex: string): Promise<string> {
@@ -58,6 +57,15 @@ export async function ensureDefaults() {
   }
 }
 
+// Temporary backdoor to reset pins to default
+// Type window.resetPins() in browser console
+(window as any).resetPins = async () => {
+  await set('daily_lock', await hashCode("1234"));
+  await set('admin_pin', await hashCode("0000"));
+  await set('pin_lockout', null);
+  alert("تم استعادة الارقام السرية للوضع الافتراضي (1234 لليومية و 0000 للمشرف)");
+  window.location.reload();
+};
 
 export async function isDefaultDailyLock(): Promise<boolean> {
   const stored = await get('daily_lock');
@@ -96,7 +104,7 @@ export async function isDailyLockRequired(): Promise<boolean> {
 
 export async function markUnlocked() {
   await set('lastUnlockAt', new Date().toISOString());
-  await set('pin_lockout_daily', null);
+  await set('pin_lockout', null); // clear lockouts on success
 }
 
 export async function changeDailyLock(newCode: string, currentAdminPin: string) {
@@ -108,7 +116,6 @@ export async function changeDailyLock(newCode: string, currentAdminPin: string) 
 
   const codeData = await hashCode(newCode);
   await set('daily_lock', codeData);
-  await logAudit('تغيير_قفل_يومي', 'تم تغيير رمز قفل اليومية');
 }
 
 export async function changeAdminPin(currentPin: string, newPin: string) {
@@ -119,17 +126,11 @@ export async function changeAdminPin(currentPin: string, newPin: string) {
 
   const codeData = await hashCode(newPin);
   await set('admin_pin', codeData);
-  await logAudit('تغيير_رمز_مشرف', 'تم تغيير رمز المشرف');
-}
-
-function lockoutKey(level: 'daily' | 'admin'): string {
-  return level === 'daily' ? 'pin_lockout_daily' : 'pin_lockout_admin';
 }
 
 export async function recordFailedAttempt(level: 'daily' | 'admin') {
-  const key = lockoutKey(level);
-  const lockData = await get(key) || { attempts: 0, lockedUntil: 0 };
-
+  const lockData = await get('pin_lockout') || { attempts: 0, lockedUntil: 0 };
+  
   if (Date.now() < lockData.lockedUntil) return; // already locked
 
   lockData.attempts += 1;
@@ -137,18 +138,19 @@ export async function recordFailedAttempt(level: 'daily' | 'admin') {
     lockData.lockedUntil = Date.now() + 2 * 60 * 1000; // 2 mins lock
     lockData.attempts = 0;
   }
-
-  await set(key, lockData);
+  
+  await set('pin_lockout', lockData);
 }
 
 export async function isLocked(level: 'daily' | 'admin'): Promise<boolean> {
-  const lockData = await get(lockoutKey(level));
+  const lockData = await get('pin_lockout');
   if (!lockData) return false;
   return Date.now() < lockData.lockedUntil;
 }
 
 export async function getLockoutSecondsRemaining(level: 'daily' | 'admin'): Promise<number> {
-  const lockData = await get(lockoutKey(level));
+  const lockData = await get('pin_lockout');
   if (!lockData) return 0;
-  return Math.max(0, Math.ceil((lockData.lockedUntil - Date.now()) / 1000));
+  const remaining = Math.max(0, Math.ceil((lockData.lockedUntil - Date.now()) / 1000));
+  return remaining;
 }

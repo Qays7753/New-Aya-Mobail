@@ -29,7 +29,7 @@ export function MigrationErrorScreen({ error }: { error: string }) {
           حدث خطأ أثناء ترقية قاعدة البيانات. خذ نسخة احتياطية من بياناتك قبل المتابعة.
         </p>
         
-        <div className="w-full bg-gray-100 p-4 rounded-xl text-start shrink-0 max-h-40 overflow-y-auto font-mono text-sm text-gray-700 overflow-x-auto mb-8 whitespace-pre-wrap" dir="ltr">
+        <div className="w-full bg-gray-100 p-4 rounded-xl text-left shrink-0 max-h-40 overflow-y-auto font-mono text-sm text-gray-700 overflow-x-auto mb-8 whitespace-pre-wrap" dir="ltr">
           {error}
         </div>
         

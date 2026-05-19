@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { verifyCode, getLockoutSecondsRemaining, recordFailedAttempt, markUnlocked } from '@/lib/auth';
 import { get } from 'idb-keyval';
-import { Lock, Clock } from 'lucide-react';
+import { Lock, Delete, Clock } from 'lucide-react';
 import { toastError, toastSuccess } from '@/components/ui/toast';
 import { NumPad } from '@/components/ui/NumPad';
 
@@ -64,6 +64,16 @@ export function DailyLockScreen() {
         <p className="text-text-secondary text-center max-w-sm">
           يرجى إدخال الركن الموحد (Daily Lock) لفتح نظام المبيعات
         </p>
+        <button 
+          onClick={async () => {
+            if (confirm("هل أنت متأكد من استعادة الأرقام السرية الافتراضية؟")) {
+              (window as any).resetPins();
+            }
+          }}
+          className="text-xs text-text-secondary mt-2 underline"
+        >
+          نسيت كلمة المرور؟
+        </button>
       </div>
 
       {lockoutSecs > 0 ? (

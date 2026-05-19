@@ -12,7 +12,7 @@ export function RouteErrorFallback({ error, resetErrorBoundary }: FallbackProps)
         يبدو أن هناك مشكلة أثناء عرض هذه الصفحة. يمكنك المحاولة مرة أخرى أو العودة في وقت لاحق.
       </p>
       
-      {error != null && (
+      {error && (
         <div className="bg-surface border border-border p-4 rounded-xl text-start text-sm text-text-secondary font-mono mb-8 w-full max-w-md overflow-x-auto" dir="ltr">
           {error instanceof Error ? error.message : String(error)}
         </div>

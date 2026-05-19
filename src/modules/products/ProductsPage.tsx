@@ -1,30 +1,28 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAllProducts, Product } from '@/db/queries/products';
-import { getCategories } from '@/db/queries/categories';
-import { Plus, Search, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Search, Filter, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { ProductEditor } from './components/ProductEditor';
+
+const CATEGORIES = [
+  { id: 'all', name: 'الكل' },
+  { id: 'device', name: 'أجهزة' },
+  { id: 'accessory', name: 'إكسسوارات' },
+  { id: 'sim', name: 'شرائح اتصال' },
+  { id: 'package', name: 'باقات' },
+  { id: 'service_repair', name: 'خدمات صيانة' },
+  { id: 'service_general', name: 'خدمات عامة' }
+];
 
 export default function ProductsPage() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<'all' | string>('all');
   const [showInactive, setShowInactive] = useState(false);
-
+  
   const [editorOpen, setEditorOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-
-  const { data: dbCategories = [] } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => getCategories(false),
-    staleTime: Infinity,
-  });
-
-  const CATEGORIES = [
-    { id: 'all', name: 'الكل' },
-    ...dbCategories.map(c => ({ id: c.id, name: c.name })),
-  ];
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products', search, category, showInactive],
@@ -140,7 +138,7 @@ export default function ProductsPage() {
 
                     <div className="text-xs text-text-secondary mb-1">{categoryName}</div>
                     <h3 className="font-bold text-lg leading-tight mb-1 pe-14">{product.name}</h3>
-                    {product.sku && <div className="text-xs text-text-secondary font-mono bg-muted inline-block px-1.5 rounded mb-3">{product.sku}</div>}
+                    {product.sku && <div className="text-xs text-secondary font-mono bg-muted inline-block px-1.5 rounded mb-3">{product.sku}</div>}
                     
                     <div className="flex justify-between items-end mt-4">
                       <div className="font-bold text-lg numeric text-accent">{formatMoney(product.sale_price)}</div>

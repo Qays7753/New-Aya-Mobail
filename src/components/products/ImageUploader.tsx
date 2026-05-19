@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Camera, Image as ImageIcon, Trash2, Loader2 } from 'lucide-react';
 import { compressImage } from '@/lib/imageStorage';
 import { toast } from 'sonner';
@@ -53,7 +53,7 @@ export function ImageUploader({ initialImageBlobUrl, onImageChange }: ImageUploa
           <button
             type="button"
             onClick={handleRemove}
-            className="absolute bottom-2 end-2 p-2 bg-white/90 text-danger rounded-full shadow hover:bg-white transition-colors"
+            className="absolute bottom-2 right-2 p-2 bg-white/90 text-danger rounded-full shadow hover:bg-white transition-colors"
           >
             <Trash2 className="w-4 h-4" />
           </button>

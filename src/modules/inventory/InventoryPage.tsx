@@ -4,9 +4,10 @@ import { getAllProducts } from '@/db/queries/products';
 import { createInventoryCount, getInventoryCounts, createAccountReconciliation } from '@/db/queries/inventory';
 import { getActiveAccounts } from '@/db/queries/accounts';
 import { useAuth } from '@/contexts/AuthContext';
-import { Search, CheckCircle, PackageSearch, History, Scale } from 'lucide-react';
+import { Search, CheckCircle, PackageSearch, History, Scale, Filter } from 'lucide-react';
 import { formatMoney, parseMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 export default function InventoryPage() {
@@ -106,12 +107,10 @@ function NewCountTab() {
     onSuccess: () => {
       toast.success('تم الجرد وتحديث الأرصدة بنجاح');
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['all-products'] });
       queryClient.invalidateQueries({ queryKey: ['inventory-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
       setActualCounts({});
     },
-    onError: () => {
+    onError: (err: any) => {
       toast.error('حدث خطأ أثناء حفظ الجرد');
     }
   });
@@ -308,7 +307,7 @@ function ReconciliationTab() {
       setSelectedAccountId('');
       setActualBalanceStr('');
     },
-    onError: () => {
+    onError: (err: any) => {
       toast.error('حدث خطأ أثناء تسوية الحساب');
     }
   });

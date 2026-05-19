@@ -1,3 +1,0 @@
-ALTER TABLE products ADD COLUMN cost_price INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE invoice_items ADD COLUMN unit_cost INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE invoice_items ADD COLUMN product_category TEXT;

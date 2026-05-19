@@ -1,14 +1,13 @@
 import { NavLink } from 'react-router-dom';
-import { Home, ShoppingCart, Wrench, BarChart2, Menu, Lock } from 'lucide-react';
+import { Home, ShoppingCart, Wrench, BarChart2, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const PROTECTED = new Set(['/dashboard', '/reports']);
-
 export function BottomNav({ className }: { className?: string }) {
+
   const navItems = [
     { path: '/dashboard', icon: Home, label: 'الرئيسية' },
     { path: '/maintenance', icon: Wrench, label: 'الصيانة' },
-    { path: '/pos', icon: ShoppingCart, label: 'نقطة البيع', isCenter: true },
+    { path: '/pos', icon: ShoppingCart, label: 'POS', isCenter: true },
     { path: '/reports', icon: BarChart2, label: 'التقارير' },
     { path: '/more', icon: Menu, label: 'المزيد' },
   ];
@@ -34,15 +33,10 @@ export function BottomNav({ className }: { className?: string }) {
                   <item.icon className="w-6 h-6" />
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-0.5 relative">
-                  <div className="relative">
-                    <item.icon className={cn("w-6 h-6", isActive && "fill-current/20")} />
-                    {PROTECTED.has(item.path) && (
-                      <Lock className="absolute -top-1 -end-1 w-3 h-3 text-accent bg-background rounded-full p-0.5 box-content" />
-                    )}
-                  </div>
+                <>
+                  <item.icon className={cn("w-6 h-6", isActive && "fill-current/20")} />
                   <span className="text-[10px]">{item.label}</span>
-                </div>
+                </>
               )}
             </>
           )}

@@ -19,7 +19,7 @@ export default defineConfig(({mode}) => {
           theme_color: '#F9F8F5',
           background_color: '#F9F8F5',
           display: 'standalone',
-          orientation: 'any',
+          orientation: 'portrait',
           icons: [
             {
               src: '/pwa-192x192.png',
@@ -34,7 +34,6 @@ export default defineConfig(({mode}) => {
             }
           ]
         },
-        devOptions: { enabled: true },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,wasm}'],
           maximumFileSizeToCacheInBytes: 5000000,
@@ -99,9 +98,6 @@ export default defineConfig(({mode}) => {
       },
     },
     server: {
-      port: 5000,
-      host: '0.0.0.0',
-      allowedHosts: true,
       headers: {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp'
@@ -110,7 +106,7 @@ export default defineConfig(({mode}) => {
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : { ignored: ['**/.local/**', '**/.cache/**'] },
+      watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
     optimizeDeps: {
       exclude: ['@sqlite.org/sqlite-wasm']
