@@ -90,6 +90,8 @@ export function PaymentDialog({ isOpen, onClose, onSuccess }: PaymentDialogProps
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['active-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['report'] });
       onSuccess(data.invoiceId, data.invoiceNumber, change);
     },
     onError: (err: any) => {
