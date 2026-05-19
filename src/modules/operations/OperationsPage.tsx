@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getRecentLedgerEntries, getDailySummary } from '@/db/queries/operations';
 import { formatMoney } from '@/lib/money';
-import { ArrowDownRight, ArrowUpRight, FileText, ArrowRightLeft, PlusCircle } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ArrowRightLeft, PlusCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { TopupDialog } from './components/TopupDialog';

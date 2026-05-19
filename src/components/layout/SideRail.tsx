@@ -5,7 +5,7 @@ import { useUIStore } from '@/stores/ui.store';
 
 const navItems = [
   { path: '/dashboard', icon: Home, label: 'الرئيسية', requiresPin: true },
-  { path: '/pos', icon: ShoppingCart, label: 'POS', requiresPin: false },
+  { path: '/pos', icon: ShoppingCart, label: 'نقطة البيع', requiresPin: false },
   { path: '/products', icon: Package, label: 'المنتجات', requiresPin: false },
   { path: '/inventory', icon: Package, label: 'المخزون', requiresPin: true },
   { path: '/expenses', icon: DollarSign, label: 'المصروفات', requiresPin: true },

@@ -25,5 +25,14 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/__tests__/**",
+    "src/test/**",
+    "e2e/**",
+    "vitest.config.ts",
+    "playwright.config.ts"
+  ]
 }

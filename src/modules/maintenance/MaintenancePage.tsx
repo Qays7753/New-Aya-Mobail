@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getJobs, addJob, updateJobStatus, MaintenanceJob } from '@/db/queries/maintenance';
 import { getActiveAccounts } from '@/db/queries/accounts';
@@ -7,6 +7,7 @@ import { Wrench, Plus, CheckCircle, PackageCheck, Phone, X, Search } from 'lucid
 import { formatMoney, parseMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useEscKey } from '@/hooks/useEscKey';
 
 const STATUS_MAP = {
   new: { label: 'قيد الاستلام', color: 'bg-muted text-text-secondary' },
@@ -22,13 +23,17 @@ export default function MaintenancePage() {
   const [keyword, setKeyword] = useState('');
   const [isAddMode, setIsAddMode] = useState(false);
   
-  // Delivery Dialog state
   const [deliveryJobId, setDeliveryJobId] = useState<string | null>(null);
   const [finalAmount, setFinalAmount] = useState('');
   const [paymentAccountId, setPaymentAccountId] = useState('');
 
-  // Cancel PIN state
   const { requireAdminAction } = useAuth();
+
+  // Esc: close topmost open dialog
+  useEscKey(() => {
+    if (deliveryJobId) setDeliveryJobId(null);
+    else if (isAddMode) setIsAddMode(false);
+  }, !!(deliveryJobId || isAddMode));
   
   const [formData, setFormData] = useState({
     job_date: new Date().toISOString().split('T')[0],
@@ -73,6 +78,9 @@ export default function MaintenancePage() {
       queryClient.invalidateQueries({ queryKey: ['maintenance'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       queryClient.invalidateQueries({ queryKey: ['ledger-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['maintenance-jobs-active'] });
+      queryClient.invalidateQueries({ queryKey: ['recent-invoices-dashboard'] });
       toast.success('تم تحديث حالة الجهاز');
       setDeliveryJobId(null);
     },
@@ -210,18 +218,16 @@ export default function MaintenancePage() {
                           <PackageCheck className="w-3 h-3" /> تسليم للعميل
                         </button>
                       )}
-                      {job.status === 'new' && (
-                        <button 
-                          onClick={() => {
-                            requireAdminAction(() => {
-                               updateStatusMutation.mutate({ id: job.id, status: 'cancelled' });
-                            });
-                          }}
-                          className="px-3 py-1.5 bg-danger/10 text-danger rounded-lg font-bold text-xs flex items-center gap-1"
-                        >
-                          إلغاء
-                        </button>
-                      )}
+                      <button 
+                        onClick={() => {
+                          requireAdminAction(() => {
+                             updateStatusMutation.mutate({ id: job.id, status: 'cancelled' });
+                          });
+                        }}
+                        className="px-3 py-1.5 bg-danger/10 text-danger rounded-lg font-bold text-xs flex items-center gap-1"
+                      >
+                        إلغاء
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -233,7 +239,10 @@ export default function MaintenancePage() {
 
       {/* Delivery Dialog */}
       {deliveryJobId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in"
+            onClick={(e) => { if (e.target === e.currentTarget) setDeliveryJobId(null); }}
+          >
             <div className="bg-surface w-full max-w-sm rounded-2xl shadow-xl flex flex-col overflow-hidden">
                 <div className="flex justify-between items-center p-4 border-b border-border bg-muted/30">
                     <h2 className="text-xl font-bold">تسليم الجهاز</h2>
@@ -284,7 +293,10 @@ export default function MaintenancePage() {
 
       {/* Add Job Dialog */}
       {isAddMode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in"
+          onClick={(e) => { if (e.target === e.currentTarget) setIsAddMode(false); }}
+        >
           <div className="bg-surface w-full max-w-lg rounded-2xl p-6 shadow-xl flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center mb-6 shrink-0">
               <h2 className="text-xl font-bold">استلام جهاز جديد للصيانة</h2>
@@ -347,7 +359,7 @@ export default function MaintenancePage() {
                       onChange={e => setFormData({...formData, estimated_cost: e.target.value})}
                       className="w-full h-11 ps-10 pe-3 rounded-lg border border-border focus:border-accent outline-none numeric font-bold bg-background"
                     />
-                    <span className="absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">د.ع</span>
+                    <span className="absolute start-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">د.أ</span>
                   </div>
                 </div>
               </div>

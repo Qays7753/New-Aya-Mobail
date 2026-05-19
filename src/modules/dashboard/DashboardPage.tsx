@@ -1,14 +1,33 @@
 import { useQuery } from '@tanstack/react-query';
 import { getDailySummary } from '@/db/queries/operations';
 import { getActiveAccounts } from '@/db/queries/accounts';
-import { getAllProducts } from '@/db/queries/products';
+import { getLowStockProducts } from '@/db/queries/products';
 import { getJobs } from '@/db/queries/maintenance';
 import { getRecentInvoices } from '@/db/queries/sales';
+import { getReport } from '@/db/queries/reports';
 import { formatMoney } from '@/lib/money';
-import { Wallet, TrendingUp, HandCoins, Package, Wrench, Receipt, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Wallet, TrendingUp, HandCoins, Package, Wrench, Receipt, AlertTriangle, CheckCircle, Banknote, CreditCard, Building2, Smartphone } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfWeek, startOfMonth } from 'date-fns';
+
+const todayStr = format(new Date(), 'yyyy-MM-dd');
+const weekStartStr = format(startOfWeek(new Date(), { weekStartsOn: 0 }), 'yyyy-MM-dd');
+const monthStartStr = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+
+const TYPE_LABELS: Record<string, string> = {
+  cash: 'نقداً',
+  bank: 'بنوك',
+  wallet: 'محافظ',
+  card: 'بطاقات',
+};
+
+const TYPE_ICONS: Record<string, React.ReactNode> = {
+  cash: <Banknote className="w-4 h-4" />,
+  bank: <Building2 className="w-4 h-4" />,
+  wallet: <Smartphone className="w-4 h-4" />,
+  card: <CreditCard className="w-4 h-4" />,
+};
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -22,9 +41,10 @@ export default function DashboardPage() {
     queryFn: getActiveAccounts
   });
 
-  const { data: products = [] } = useQuery({
-    queryKey: ['all-products'],
-    queryFn: () => getAllProducts()
+  const { data: lowStockProducts = [] } = useQuery({
+    queryKey: ['low-stock-products'],
+    queryFn: getLowStockProducts,
+    staleTime: 60_000,
   });
 
   const { data: maintenanceJobs = [] } = useQuery({
@@ -37,8 +57,34 @@ export default function DashboardPage() {
     queryFn: () => getRecentInvoices(5)
   });
 
-  const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
-  const lowStockProducts = products.filter(p => p.track_stock && p.stock_qty <= p.min_stock);
+  const { data: reportToday } = useQuery({
+    queryKey: ['report', todayStr, todayStr],
+    queryFn: () => getReport(todayStr, todayStr),
+  });
+
+  const { data: reportWeek } = useQuery({
+    queryKey: ['report', weekStartStr, todayStr],
+    queryFn: () => getReport(weekStartStr, todayStr),
+  });
+
+  const { data: reportMonth } = useQuery({
+    queryKey: ['report', monthStartStr, todayStr],
+    queryFn: () => getReport(monthStartStr, todayStr),
+  });
+
+  const liquidityAccounts = accounts.filter(a =>
+    a.type === 'cash' || a.type === 'card' || a.type === 'bank' || a.type === 'wallet'
+  );
+
+  const totalLiquidity = liquidityAccounts.reduce((sum, acc) => sum + acc.balance, 0);
+
+  const liquidityByType = (['cash', 'bank', 'wallet', 'card'] as const).map(type => ({
+    type,
+    label: TYPE_LABELS[type],
+    icon: TYPE_ICONS[type],
+    total: liquidityAccounts.filter(a => a.type === type).reduce((sum, a) => sum + a.balance, 0),
+  }));
+
   const pendingJobs = maintenanceJobs.filter(j => j.status === 'new' || j.status === 'in_progress');
 
   const QUICK_LINKS = [
@@ -64,7 +110,7 @@ export default function DashboardPage() {
             </div>
             <div>
               <div className="text-sm text-text-secondary">إجمالي الأرصدة</div>
-              <div className="text-2xl font-bold numeric">{formatMoney(totalBalance)}</div>
+              <div className="text-2xl font-bold numeric">{formatMoney(totalLiquidity)}</div>
             </div>
           </div>
         </header>
@@ -83,6 +129,63 @@ export default function DashboardPage() {
             <HandCoins className="w-6 h-6" />
             <span>نقطة البيع (POS)</span>
           </button>
+        </section>
+
+        {/* السيولة المتاحة */}
+        <section>
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <Banknote className="w-6 h-6 text-accent" /> السيولة المتاحة
+          </h2>
+          <div className="bg-surface border border-border rounded-2xl p-6">
+            <div className="text-4xl font-bold numeric text-accent mb-6">{formatMoney(totalLiquidity)}</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {liquidityByType.map(({ type, label, icon, total }) => (
+                <div key={type} className="bg-background border border-border rounded-xl p-4 flex flex-col gap-2">
+                  <div className="flex items-center gap-2 text-text-secondary text-sm">
+                    {icon}
+                    <span>{label}</span>
+                  </div>
+                  <div className="text-lg font-bold numeric">{formatMoney(total)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Profit Cards */}
+        <section>
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <TrendingUp className="w-6 h-6 text-accent" /> صافي الأرباح
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-surface border border-border p-5 rounded-2xl">
+              <div className="text-text-secondary text-sm mb-2">ربح اليوم</div>
+              <div className={cn(
+                "text-2xl font-bold numeric",
+                (reportToday?.kpi.netProfit ?? 0) >= 0 ? "text-success" : "text-danger"
+              )}>
+                {formatMoney(reportToday?.kpi.netProfit ?? 0)}
+              </div>
+            </div>
+            <div className="bg-surface border border-border p-5 rounded-2xl">
+              <div className="text-text-secondary text-sm mb-2">ربح هذا الأسبوع</div>
+              <div className={cn(
+                "text-2xl font-bold numeric",
+                (reportWeek?.kpi.netProfit ?? 0) >= 0 ? "text-success" : "text-danger"
+              )}>
+                {formatMoney(reportWeek?.kpi.netProfit ?? 0)}
+              </div>
+            </div>
+            <div className="bg-surface border border-border p-5 rounded-2xl">
+              <div className="text-text-secondary text-sm mb-2">ربح هذا الشهر</div>
+              <div className={cn(
+                "text-2xl font-bold numeric",
+                (reportMonth?.kpi.netProfit ?? 0) >= 0 ? "text-success" : "text-danger"
+              )}>
+                {formatMoney(reportMonth?.kpi.netProfit ?? 0)}
+              </div>
+            </div>
+          </div>
         </section>
 
         {summary && (
@@ -235,4 +338,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
