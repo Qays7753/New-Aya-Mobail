@@ -7,8 +7,10 @@ import { X, Save } from 'lucide-react';
 import { formatMoney, parseMoney } from '@/lib/money';
 import { toast } from 'sonner';
 import { useEscKey } from '@/hooks/useEscKey';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function TopupDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { requireAdminAction } = useAuth();
   const [accountId, setAccountId] = useState('');
   const [supplierId, setSupplierId] = useState('');
   const [amountStr, setAmountStr] = useState('');
@@ -75,14 +77,14 @@ export function TopupDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () 
       return;
     }
     
-    topupMutation.mutate({
+    requireAdminAction(() => topupMutation.mutate({
       account_id: accountId,
       supplier_id: supplierId || undefined,
       amount,
       cost,
       profit,
-      notes
-    });
+      notes,
+    }));
   };
 
   return (

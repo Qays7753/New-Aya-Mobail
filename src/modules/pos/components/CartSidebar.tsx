@@ -11,6 +11,7 @@ import { useEffect } from 'react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscKey } from '@/hooks/useEscKey';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ─── ActionType ────────────────────────────────────────────────────────────────
 type ActionType = 'qty' | 'price';
@@ -293,6 +294,7 @@ export function CartSidebar() {
   } = useCartStore();
   useSavedCartsStore();
   const cartStore = useCartStore();
+  const { requireAdminAction } = useAuth();
 
   const [pulse, setPulse] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -341,7 +343,7 @@ export function CartSidebar() {
       if (!isNaN(val)) updateQuantity(selectedItemId, Math.max(1, val));
     } else if (action === 'price') {
       const fils = parseMoney(raw);
-      setItemPrice(selectedItemId, Math.max(0, fils));
+      requireAdminAction(() => setItemPrice(selectedItemId, Math.max(0, fils)));
     }
   };
 

@@ -5,10 +5,11 @@ import { RouteErrorFallback } from './RouteErrorFallback';
 import { TopBar } from './TopBar';
 import { SideRail } from './SideRail';
 import { BottomNav } from './BottomNav';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, X, Shield } from 'lucide-react';
 
 import { PWABadge } from '../pwa/PWABadge';
 import { PersistenceBanner } from './PersistenceBanner';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function Shell() {
   const location = useLocation();
@@ -27,6 +28,21 @@ export function Shell() {
     localStorage.setItem('opfs_warning_dismissed', '1');
     setShowWarning(false);
   };
+
+  // ── Admin session badge ──────────────────────────────────────────────────────
+  const { isAdminPinValidUntil } = useAuth();
+  const [adminMinsLeft, setAdminMinsLeft] = useState(0);
+
+  useEffect(() => {
+    const update = () => {
+      if (!isAdminPinValidUntil) { setAdminMinsLeft(0); return; }
+      const diff = isAdminPinValidUntil - Date.now();
+      setAdminMinsLeft(diff > 0 ? Math.ceil(diff / 60000) : 0);
+    };
+    update();
+    const t = setInterval(update, 30000);
+    return () => clearInterval(t);
+  }, [isAdminPinValidUntil]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background w-full max-w-[100vw] text-text-primary">
@@ -57,6 +73,34 @@ export function Shell() {
       </div>
       {!isPOS && <BottomNav className="md:hidden" />}
       <PWABadge />
+
+      {/* ── Admin session indicator badge — visible on every route ── */}
+      {adminMinsLeft > 0 && (
+        <div
+          dir="rtl"
+          style={{
+            position: 'fixed',
+            top: '8px',
+            insetInlineEnd: '8px',
+            zIndex: 30,
+            background: '#CF694A',
+            color: 'white',
+            borderRadius: '999px',
+            padding: '4px 12px',
+            fontSize: '12px',
+            fontWeight: 700,
+            fontFamily: 'Tajawal, sans-serif',
+            boxShadow: '0 2px 8px rgba(207, 105, 74, 0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            pointerEvents: 'none',
+          }}
+        >
+          <Shield style={{ width: '12px', height: '12px' }} />
+          وضع المشرف نشط · {adminMinsLeft} د
+        </div>
+      )}
     </div>
   );
 }
