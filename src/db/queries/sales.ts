@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { useCartStore, calculateItemLineTotal } from '@/stores/cart.store';
 import { logAudit } from './audit';
 import { applyPercent, formatMoney } from '@/lib/money';
+import { isDayClosed } from './closures';
 
 export async function completeSale(data: {
   cartItems: ReturnType<typeof useCartStore.getState>['items'];
@@ -40,6 +41,9 @@ export async function completeSale(data: {
 
   const invoiceId = nanoid();
   const today = format(new Date(), 'yyyy-MM-dd');
+  if (await isDayClosed(today)) {
+    throw new Error(`يوم ${today} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
+  }
   const now = new Date().toISOString();
 
   const paidAmount = payments.reduce((sum, p) => sum + p.amount, 0);
@@ -229,6 +233,9 @@ export async function returnInvoice(invoiceId: string, refunds: { accountId: str
   const invoiceResult = await dbClient.query(`SELECT * FROM invoices WHERE id = ?`, [invoiceId]);
   if (invoiceResult.length === 0) throw new Error("Invoice not found");
   const invoice = invoiceResult[0];
+  if (await isDayClosed(invoice.invoice_date)) {
+    throw new Error(`يوم ${invoice.invoice_date} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
+  }
   if (invoice.paid_amount <= 0) throw new Error('لا يوجد مبلغ متبقٍّ للاسترجاع');
 
   // ── P2: التحقق من مبلغ الاسترجاع ──────────────────────────────

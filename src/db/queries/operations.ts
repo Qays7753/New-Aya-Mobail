@@ -2,6 +2,7 @@ import { dbClient } from '../client';
 import { format } from 'date-fns';
 import { nanoid } from 'nanoid';
 import { logAudit } from './audit';
+import { isDayClosed } from './closures';
 
 export interface LedgerEntry {
   id: string;
@@ -10,7 +11,7 @@ export interface LedgerEntry {
   account_name: string;
   type: 'debit' | 'credit';
   amount: number;
-  ref_type: 'invoice' | 'expense' | 'topup' | 'transfer' | 'manual' | 'reconciliation' | 'maintenance';
+  ref_type: 'invoice' | 'expense' | 'topup' | 'transfer' | 'manual' | 'reconciliation' | 'maintenance' | 'eod_reconciliation' | 'inventory_adjustment';
   ref_id: string | null;
   description: string;
   created_at: string;
@@ -104,6 +105,9 @@ export async function createTopup({
 }) {
   const now = new Date();
   const dateStr = format(now, 'yyyy-MM-dd');
+  if (await isDayClosed(dateStr)) {
+    throw new Error(`يوم ${dateStr} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
+  }
   const timestamp = now.toISOString();
 
   let supplier_name: string | null = null;
@@ -172,6 +176,9 @@ export async function createTransfer({
 
   const now = new Date();
   const dateStr = format(now, 'yyyy-MM-dd');
+  if (await isDayClosed(dateStr)) {
+    throw new Error(`يوم ${dateStr} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
+  }
   const timestamp = now.toISOString();
 
   let from_account_name: string | null = null;

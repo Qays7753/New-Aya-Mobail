@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { generateSequenceNumber } from '@/lib/utils';
 import { format } from 'date-fns';
 import { logAudit } from './audit';
+import { isDayClosed } from './closures';
 
 export interface ExpenseCategory {
   id: string;
@@ -68,6 +69,11 @@ export async function addExpense(data: {
 }) {
   const { amount, category_id, category_name, description, accountId, account_name } = data;
 
+  const today = format(new Date(), 'yyyy-MM-dd');
+  if (await isDayClosed(today)) {
+    throw new Error(`يوم ${today} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
+  }
+
   // التحقق من كفاية الرصيد قبل الخصم
   const accResult = await dbClient.query('SELECT balance, name FROM accounts WHERE id = ?', [accountId]);
   if (!accResult.length) throw new Error('الحساب غير موجود');
@@ -78,7 +84,6 @@ export async function addExpense(data: {
   }
 
   const id = nanoid();
-  const today = format(new Date(), 'yyyy-MM-dd');
   const now = new Date().toISOString();
   
   // Get sequence

@@ -1,0 +1,126 @@
+You are working inside the EXISTING POS project. Do NOT create a new project.
+
+GROUND RULES — same as before. READ before editing. NEVER assume.
+DO NOT touch unrelated code. After each section: tsc clean, commit.
+Push at end.
+
+TASK: Two decision-support deliverables for the owner: a full ledger
+export for the external accountant, and a formal P&L statement.
+
+═══════════════════════════════════════════════════════════════
+SECTION E1 — Full ledger export (CSV + Excel)
+═══════════════════════════════════════════════════════════════
+
+E1.1 — Query
+Add to src/db/queries/operations.ts (or a new ledger.ts):
+
+  getLedgerForPeriod(fromDate, toDate) →
+    SELECT
+      le.id,
+      le.entry_date,
+      le.created_at,
+      a.name AS account_name,
+      a.type AS account_type,
+      le.type AS direction,           -- 'credit' or 'debit'
+      le.amount,
+      le.ref_type,
+      le.ref_id,
+      le.description
+    FROM ledger_entries le
+    LEFT JOIN accounts a ON le.account_id = a.id
+    WHERE le.entry_date BETWEEN ? AND ?
+    ORDER BY le.entry_date ASC, le.created_at ASC
+
+E1.2 — UI
+File: src/modules/operations/OperationsPage.tsx (the Ledger tab if it
+exists, otherwise add).
+
+Add controls above the existing ledger view:
+- Date range picker (from / to). Default: current month.
+- Button "تصدير CSV" — generates CSV with columns:
+  التاريخ، تاريخ القيد، الحساب، النوع، الاتجاه، المبلغ (بالدينار)،
+  المرجع، الوصف
+- Button "تصدير Excel" — same columns via the `xlsx` library
+  (LAZY-IMPORTED with `await import('xlsx')` to keep main bundle small).
+- All amounts formatted as decimal dinars (fils ÷ 100) with 2 decimal
+  places. The `direction` column shows مدين/دائن.
+
+E1.3 — File naming
+- CSV: `ledger_{fromDate}_to_{toDate}.csv`
+- XLSX: `ledger_{fromDate}_to_{toDate}.xlsx`
+- UTF-8 BOM on CSV so Arabic opens correctly in Excel.
+
+═══════════════════════════════════════════════════════════════
+SECTION E2 — Profit & Loss statement
+═══════════════════════════════════════════════════════════════
+
+E2.1 — Query
+Add to src/db/queries/reports.ts (or use the existing getReport function
+if it already covers most of this — extend rather than duplicate).
+
+  getProfitAndLoss(fromDate, toDate) → {
+    sales_gross,                 // SUM(total_amount) WHERE status IN ('active','partially_returned')
+    returns_total,               // SUM(total_amount) WHERE status = 'returned'
+    sales_net,                   // sales_gross - 0 (returned invoices excluded above)
+    cogs,                        // SUM(unit_cost * quantity) for active+partial invoices
+    gross_profit,                // sales_net - cogs
+    expenses_total,              // SUM(amount) FROM expenses
+    expenses_by_category,        // [{ category_name, total }]
+    topup_profit,                // SUM(profit) FROM topups
+    maintenance_revenue,         // SUM(final_amount) FROM maintenance_jobs WHERE status='delivered'
+    other_income,                // topup_profit + maintenance_revenue
+    net_profit,                  // gross_profit + other_income - expenses_total
+    period: { fromDate, toDate }
+  }
+
+All status filters must match the conventions established in Phase 1.
+Use `status IN ('active','partially_returned')` for "real sales".
+
+E2.2 — UI
+New tab in src/modules/reports/ReportsPage.tsx: "بيان الأرباح والخسائر".
+
+Render a structured P&L document, RTL, in three columns (label | amount |
+% of sales), with the following sections:
+
+  المبيعات
+    إجمالي المبيعات          {sales_gross}
+    المرتجعات              ({returns_total})
+    صافي المبيعات          {sales_net}                100%
+
+  تكلفة البضاعة المباعة (COGS)
+    تكلفة المبيعات          ({cogs})
+
+  مجمل الربح               {gross_profit}             {gp_pct}
+
+  المصاريف
+    {by category lines}
+    إجمالي المصاريف         ({expenses_total})
+
+  إيرادات أخرى
+    ربح الشحن                 {topup_profit}
+    إيرادات الصيانة           {maintenance_revenue}
+
+  صافي الربح               {net_profit}               {np_pct}
+
+Period selector at top (today / week / month / custom). Buttons "طباعة"
+(uses window.print() with a print-only stylesheet) and "تصدير Excel"
+(lazy-imported xlsx).
+
+═══════════════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════════════
+- `npx tsc --noEmit` → 0 errors.
+- Ledger export: CSV and Excel download with all ledger entries in the
+  selected period, Arabic columns intact, sorted chronologically.
+- P&L: numbers reconcile with the underlying queries. Reproducing the
+  same query manually gives the same totals.
+- P&L print preview shows the document correctly RTL with no chrome.
+- xlsx is loaded only when the user clicks Excel export (verify in
+  network tab or by checking the import is dynamic).
+
+Commit (3 commits):
+  feat(ledger): full ledger export to CSV and Excel
+  feat(reports): P&L statement query (sales, cogs, expenses, other income)
+  feat(reports): P&L statement UI with period selector, print, Excel export
+
+Then `git push origin main`.

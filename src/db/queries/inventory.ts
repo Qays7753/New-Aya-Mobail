@@ -2,11 +2,15 @@ import { dbClient } from '../client';
 import { format } from 'date-fns';
 import { nanoid } from 'nanoid';
 import { logAudit } from './audit';
+import { isDayClosed } from './closures';
 
 export async function createInventoryCount(items: { product_id: string; system_qty: number; actual_qty: number; reason: string }[], notes?: string) {
   const now = new Date();
   const dateStr = format(now, 'yyyy-MM-dd HH:mm:ss');
   const entryDate = format(now, 'yyyy-MM-dd');
+  if (await isDayClosed(entryDate)) {
+    throw new Error(`يوم ${entryDate} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
+  }
   const countId = nanoid();
 
   // Pre-fetch cost_price for all products in this count
@@ -85,6 +89,9 @@ export async function getInventoryCounts() {
 export async function createAccountReconciliation(account_id: string, actual_balance: number) {
   const now = new Date();
   const dateStr = format(now, 'yyyy-MM-dd');
+  if (await isDayClosed(dateStr)) {
+    throw new Error(`يوم ${dateStr} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
+  }
   const timestamp = now.toISOString();
 
   // Get current balance

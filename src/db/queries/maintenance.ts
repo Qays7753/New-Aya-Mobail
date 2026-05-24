@@ -4,6 +4,7 @@ import { generateSequenceNumber } from '@/lib/utils';
 import { format } from 'date-fns';
 import { logAudit } from './audit';
 import { formatMoney } from '@/lib/money';
+import { isDayClosed } from './closures';
 
 export interface MaintenanceJob {
   id: string;
@@ -94,6 +95,10 @@ export async function updateJobStatus(id: string, status: MaintenanceJob['status
   if (status === 'delivered') {
     if (final_amount === undefined || !payment_account_id) {
         throw new Error('Final amount and account are required for delivery');
+    }
+
+    if (await isDayClosed(onlyDateStr)) {
+      throw new Error(`يوم ${onlyDateStr} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
     }
 
     // منع التسليم المزدوج

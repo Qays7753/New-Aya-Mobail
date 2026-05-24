@@ -1,0 +1,137 @@
+You are working inside the EXISTING POS project. Do NOT create a new project.
+
+GROUND RULES — same as before. READ before editing. NEVER assume.
+DO NOT touch unrelated code. After each section: tsc clean, commit.
+Push at end.
+
+TASK: Add a guided End-of-Day close flow with cash count, variance
+auto-reconciliation, a daily closing summary, and a day-lock that
+prevents further modifications without admin PIN.
+
+═══════════════════════════════════════════════════════════════
+SECTION D1 — Migration: day_closures table
+═══════════════════════════════════════════════════════════════
+- List src/db/migrations/ and use the NEXT available number (likely 010).
+- Create src/db/migrations/010_day_closures.sql. Register it in
+  src/db/migrations/index.ts following the existing pattern. Set
+  PRAGMA user_version = 10; at top.
+- Schema:
+
+  CREATE TABLE day_closures (
+    closure_date     TEXT PRIMARY KEY,            -- YYYY-MM-DD
+    closed_at        TEXT NOT NULL,               -- ISO timestamp
+    closed_by        TEXT,                        -- reserved for cashier identity (Phase 4)
+    sales_total      INTEGER NOT NULL DEFAULT 0,  -- snapshot, in fils
+    cogs_total       INTEGER NOT NULL DEFAULT 0,
+    discounts_total  INTEGER NOT NULL DEFAULT 0,
+    gifts_value      INTEGER NOT NULL DEFAULT 0,
+    returns_total    INTEGER NOT NULL DEFAULT 0,
+    expenses_total   INTEGER NOT NULL DEFAULT 0,
+    net_profit       INTEGER NOT NULL DEFAULT 0,
+    notes            TEXT
+  );
+  CREATE INDEX idx_day_closures_date ON day_closures(closure_date);
+
+═══════════════════════════════════════════════════════════════
+SECTION D2 — Query layer
+═══════════════════════════════════════════════════════════════
+Create src/db/queries/closures.ts with:
+
+D2.1 — getOpenDayPreview(targetDate) → returns the same shape as
+day_closures but computed live from current data (sales/cogs/etc.) for
+the target date. This is what the EOD screen displays before the user
+commits. Reuse getDailySummary from operations.ts where possible.
+
+D2.2 — closeDay(targetDate, cashCounts: { accountId, actualCash }[], notes)
+- Validate: target date is today or earlier (no future closes).
+- Validate: no existing row in day_closures for this date.
+- For each cash-type account in cashCounts:
+  - Get current `accounts.balance`.
+  - diff = actualCash - balance
+  - If diff != 0: append a ledger_entries row with ref_type='eod_reconciliation',
+    type 'credit' if diff>0 else 'debit', amount=Math.abs(diff), description
+    "تسوية إقفال يومي: {account_name} — الفرق {diff}".
+  - Update accounts.balance = actualCash.
+- Compute the closing snapshot (sales/cogs/etc.) via getOpenDayPreview.
+- Insert into day_closures with the snapshot.
+- All of the above in a single batchRun.
+- After success: logAudit('إقفال_يومي', detail with totals + variance, 'day_closure', targetDate).
+
+D2.3 — isDayClosed(date) → boolean
+  SELECT 1 FROM day_closures WHERE closure_date = ? LIMIT 1
+
+D2.4 — reopenDay(date) → deletes the day_closures row. ADMIN-ONLY (the
+caller must wrap in requireAdminAction). logAudit('فتح_يوم_مقفل', date,
+'day_closure', date).
+
+═══════════════════════════════════════════════════════════════
+SECTION D3 — Enforce the day-lock on write paths
+═══════════════════════════════════════════════════════════════
+At the START of every write function that operates on a specific date,
+check `isDayClosed(theDate)`. If true, throw:
+  throw new Error('يوم {date} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.');
+
+Apply to:
+- src/db/queries/sales.ts → completeSale (uses today's date — block if
+  isDayClosed(today)).
+- src/db/queries/sales.ts → returnInvoice (block if the invoice's
+  invoice_date is closed).
+- src/db/queries/expenses.ts → addExpense (block if today is closed).
+- src/db/queries/operations.ts → createTopup, createTransfer (block if
+  today is closed).
+- src/db/queries/inventory.ts → createInventoryCount,
+  createAccountReconciliation (block if today is closed).
+- src/db/queries/maintenance.ts → updateJobStatus when status='delivered'
+  (block if today is closed — this is a financial event).
+
+For all other reads / non-financial status changes (e.g., maintenance
+state ready → delivered is gated, but new → in_progress is not), no check.
+
+═══════════════════════════════════════════════════════════════
+SECTION D4 — UI: Operations → "إقفال اليوم"
+═══════════════════════════════════════════════════════════════
+File: src/modules/operations/OperationsPage.tsx (add a tab or button) +
+new component src/modules/operations/components/EODCloseDialog.tsx.
+
+Flow:
+1. Button "إقفال اليوم" visible only when today's day is NOT closed.
+2. Click → dialog opens with:
+   a. Today's date (read-only).
+   b. Live preview cards: sales, cogs, gifts, discounts, returns,
+      expenses, net profit (from getOpenDayPreview).
+   c. Cash count section: list every active account of type 'cash'.
+      For each: show system balance + input "الرصيد الفعلي". Compute
+      diff live.
+   d. Notes textarea (optional).
+   e. Submit button "إقفال" — wrap in requireAdminAction (close is an
+      admin-only action).
+3. On submit → call closeDay(...). Show toast on success. Disable the
+   close button thereafter for today.
+4. If today is already closed, show instead a green banner: "اليوم
+   مُقفَل بنجاح" with the closing time, and a small "فتح اليوم" button
+   that is also gated by requireAdminAction and calls reopenDay(today).
+5. History tab: list past day_closures with their snapshot. Each row
+   has a "فتح هذا اليوم" button (admin-gated) → reopenDay.
+
+═══════════════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════════════
+- `npx tsc --noEmit` → 0 errors.
+- Migration 010 applies cleanly on a DB that already has 001–009.
+- Closing today succeeds (with admin PIN), creates the day_closures row,
+  applies any cash-count variance as a ledger_entry, and logs audit.
+- After closing, attempting any sale/expense/transfer/topup/return/
+  reconciliation for today throws the Arabic error.
+- Reopening today (admin) clears the closure; operations resume.
+- Closing the same day twice is rejected.
+- Closing a future date is rejected.
+- accounts.balance for any cash account whose count differed is now
+  equal to the entered actualCash (verify via DB).
+
+Commit (4 commits recommended):
+  feat(eod): migration 010 day_closures
+  feat(eod): closeDay/reopenDay queries with variance reconciliation
+  feat(eod): block writes on closed days across all financial paths
+  feat(eod): EOD dialog with cash count and live preview
+
+Then `git push origin main`.
