@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Settings, Shield, HardDrive, Download, Upload, AlertTriangle, Key, Store, Receipt, ClipboardList, RefreshCw, Tag, Plus, Pencil, Trash2, EyeOff, Eye, FileDown } from 'lucide-react';
+import { Settings, Shield, HardDrive, Download, Upload, AlertTriangle, Key, Store, Receipt, ClipboardList, RefreshCw, Tag, Plus, Pencil, Trash2, EyeOff, Eye, FileDown, Tablet, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,6 +8,7 @@ import { exportDb, importDb } from '@/lib/backup';
 import { changeDailyLock, changeAdminPin } from '@/lib/auth';
 import { useSettingsStore } from '@/stores/settings.store';
 import { getAuditLog, getAuditActions } from '@/db/queries/audit';
+import { getDeviceId, getDeviceName, setDeviceName } from '@/lib/device';
 import { getCategories, addCategory, updateCategory, deleteCategory, Category } from '@/db/queries/categories';
 import { format, parseISO } from 'date-fns';
 
@@ -77,6 +78,10 @@ export default function SettingsPage() {
   const [storeName, setStoreName] = useState(settings.storeName);
   const [storePhone, setStorePhone] = useState(settings.storePhone);
   const [storeAddress, setStoreAddress] = useState(settings.storeAddress);
+
+  // Device identity
+  const [deviceId] = useState(() => getDeviceId());
+  const [deviceName, setDeviceNameState] = useState(() => getDeviceName());
 
   // POS Settings
   const [receiptHeader, setReceiptHeader] = useState(settings.receiptHeader);
@@ -322,6 +327,14 @@ export default function SettingsPage() {
     });
   };
 
+  const handleSaveDevice = () => {
+    requireAdminAction(() => {
+      setDeviceName(deviceName.trim() || 'تابلت رقم 1');
+      setDeviceNameState(deviceName.trim() || 'تابلت رقم 1');
+      toast.success('تم حفظ اسم الجهاز');
+    });
+  };
+
   const handleSavePOS = () => {
     requireAdminAction(() => {
       updateSettings({
@@ -469,6 +482,53 @@ export default function SettingsPage() {
                     className="h-11 px-6 bg-accent text-white font-bold rounded-lg hover:bg-accent-hover transition-colors"
                   >
                     حفظ إعدادات المتجر
+                  </button>
+                </div>
+
+                {/* Device identity card */}
+                <div className="max-w-md mt-8 pt-6 border-t border-border space-y-4">
+                  <h3 className="font-bold text-base flex items-center gap-2">
+                    <Tablet className="w-5 h-5 text-accent" /> هذا الجهاز
+                  </h3>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-text-secondary">معرّف الجهاز</label>
+                    <div className="flex items-center gap-2">
+                      <span
+                        dir="ltr"
+                        className="flex-1 h-11 px-3 rounded-lg border border-border bg-muted text-text-secondary text-sm font-mono flex items-center select-all"
+                      >
+                        {deviceId}
+                      </span>
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(deviceId); toast.success('تم النسخ'); }}
+                        className="h-11 w-11 flex items-center justify-center rounded-lg border border-border hover:bg-muted transition-colors shrink-0"
+                        title="نسخ"
+                      >
+                        <Copy className="w-4 h-4 text-text-secondary" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">اسم الجهاز</label>
+                    <input
+                      type="text"
+                      value={deviceName}
+                      onChange={(e) => setDeviceNameState(e.target.value)}
+                      className="w-full h-11 px-3 rounded-lg border border-border outline-none focus:border-accent"
+                      placeholder="تابلت رقم 1"
+                    />
+                    <p className="text-xs text-text-secondary mt-1">
+                      هذا الاسم سيظهر في سجلات التدقيق لتمييز الأجهزة في المحل.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleSaveDevice}
+                    className="h-11 px-6 bg-accent text-white font-bold rounded-lg hover:bg-accent-hover transition-colors"
+                  >
+                    حفظ اسم الجهاز
                   </button>
                 </div>
               </div>

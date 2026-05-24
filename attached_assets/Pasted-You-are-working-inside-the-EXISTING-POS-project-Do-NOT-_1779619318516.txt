@@ -1,0 +1,105 @@
+You are working inside the EXISTING POS project. Do NOT create a new project.
+
+GROUND RULES — same as before. READ before editing. NEVER assume.
+DO NOT touch unrelated code. After each section: `npx tsc --noEmit`
+clean, commit. After all sections: push.
+
+TASK: Prepare schema and runtime for multi-device operation (N tablets,
+not limited to 2). Add device_id / updated_at / deleted_at columns and
+bootstrap a stable per-device identity.
+
+═══════════════════════════════════════════════════════════════
+SECTION P4A.1 — Migration 012
+═══════════════════════════════════════════════════════════════
+Create src/db/migrations/012_multidevice_prep.sql and register in
+src/db/migrations/index.ts (version 12). Start with `PRAGMA user_version = 12;`.
+
+BEFORE writing each ALTER, verify the column does NOT already exist by
+inspecting earlier migration files. In particular, `products.updated_at`
+and `maintenance_jobs.updated_at` may already exist — DO NOT re-add them.
+
+Add columns (all TEXT nullable; additive, no DEFAULT NOT NULL):
+
+  -- device_id: identity of the writing tablet
+  ALTER TABLE invoices         ADD COLUMN device_id  TEXT;
+  ALTER TABLE invoice_items    ADD COLUMN device_id  TEXT;
+  ALTER TABLE invoice_payments ADD COLUMN device_id  TEXT;
+  ALTER TABLE expenses         ADD COLUMN device_id  TEXT;
+  ALTER TABLE topups           ADD COLUMN device_id  TEXT;
+  ALTER TABLE transfers        ADD COLUMN device_id  TEXT;
+  ALTER TABLE maintenance_jobs ADD COLUMN device_id  TEXT;
+  ALTER TABLE ledger_entries   ADD COLUMN device_id  TEXT;
+  ALTER TABLE audit_log        ADD COLUMN device_id  TEXT;
+  ALTER TABLE inventory_counts ADD COLUMN device_id  TEXT;
+  ALTER TABLE day_closures     ADD COLUMN device_id  TEXT;
+
+  -- updated_at: ISO timestamp of last modification (only where missing)
+  ALTER TABLE invoices         ADD COLUMN updated_at TEXT;
+  ALTER TABLE invoice_items    ADD COLUMN updated_at TEXT;
+  ALTER TABLE invoice_payments ADD COLUMN updated_at TEXT;
+  ALTER TABLE expenses         ADD COLUMN updated_at TEXT;
+  ALTER TABLE topups           ADD COLUMN updated_at TEXT;
+  ALTER TABLE transfers        ADD COLUMN updated_at TEXT;
+  ALTER TABLE ledger_entries   ADD COLUMN updated_at TEXT;
+  ALTER TABLE categories       ADD COLUMN updated_at TEXT;
+  ALTER TABLE accounts         ADD COLUMN updated_at TEXT;
+
+  -- deleted_at: soft-delete timestamp (NULL = active)
+  ALTER TABLE products           ADD COLUMN deleted_at TEXT;
+  ALTER TABLE categories         ADD COLUMN deleted_at TEXT;
+  ALTER TABLE expense_categories ADD COLUMN deleted_at TEXT;
+  ALTER TABLE expenses           ADD COLUMN deleted_at TEXT;
+  ALTER TABLE maintenance_jobs   ADD COLUMN deleted_at TEXT;
+  ALTER TABLE accounts           ADD COLUMN deleted_at TEXT;
+
+  -- Sync-prep indexes
+  CREATE INDEX IF NOT EXISTS idx_invoices_device    ON invoices(device_id);
+  CREATE INDEX IF NOT EXISTS idx_invoices_updated   ON invoices(updated_at);
+  CREATE INDEX IF NOT EXISTS idx_expenses_device    ON expenses(device_id);
+  CREATE INDEX IF NOT EXISTS idx_ledger_device      ON ledger_entries(device_id);
+  CREATE INDEX IF NOT EXISTS idx_audit_device       ON audit_log(device_id);
+  CREATE INDEX IF NOT EXISTS idx_products_deleted   ON products(deleted_at);
+  CREATE INDEX IF NOT EXISTS idx_categories_deleted ON categories(deleted_at);
+
+═══════════════════════════════════════════════════════════════
+SECTION P4A.2 — Device identity helper
+═══════════════════════════════════════════════════════════════
+Create src/lib/device.ts exporting:
+
+  export function getDeviceId(): string;     // stable, cached
+  export function getDeviceName(): string;
+  export function setDeviceName(name: string): void;
+
+Implementation:
+- Storage keys: `pos.device_id` and `pos.device_name`.
+- `getDeviceId()` on first call: generate `dev_` + nanoid(10), persist,
+  cache in module-level variable. Subsequent calls return cached value.
+- `getDeviceName()` default: "تابلت رقم 1".
+- All read/write through localStorage with error handling (private mode
+  may throw — fall back to in-memory cache and log a console.warn).
+
+═══════════════════════════════════════════════════════════════
+SECTION P4A.3 — Settings UI: this device's identity
+═══════════════════════════════════════════════════════════════
+In SettingsPage General tab, add a "هذا الجهاز" card:
+- Show the device id as `dev_xxxxxxxx` (dimmed, read-only, copy button).
+- Editable input for device name (uses get/setDeviceName).
+- Save button wrapped in `requireAdminAction`.
+- Hint: "هذا الاسم سيظهر في سجلات التدقيق لتمييز الأجهزة في المحل."
+
+═══════════════════════════════════════════════════════════════
+ACCEPTANCE
+═══════════════════════════════════════════════════════════════
+- `npx tsc --noEmit` → 0 errors.
+- Migration 012 applies cleanly at version 11.
+- `PRAGMA table_info(invoices)` shows device_id + updated_at columns.
+- `getDeviceId()` returns the same value across reloads. Different
+  browser/profile = different id.
+- Settings shows the device id and accepts a name change (admin gated).
+
+Commits:
+  feat(schema): migration 012 — device_id, updated_at, deleted_at
+  feat(device): persistent device id + name helper
+  feat(settings): per-device identity UI
+
+Then push origin main.

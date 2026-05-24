@@ -21,6 +21,8 @@ import partialReturnsSql from './009_partial_returns.sql?raw';
 import dayClosuresSql from './010_day_closures.sql?raw';
 // @ts-ignore
 import indexesSql from './011_indexes.sql?raw';
+// @ts-ignore
+import multidevicePrepSql from './012_multidevice_prep.sql?raw';
 
 const migrations = [
   { version: 1, sql: initSql },
@@ -34,6 +36,7 @@ const migrations = [
   { version: 9, sql: partialReturnsSql },
   { version: 10, sql: dayClosuresSql },
   { version: 11, sql: indexesSql },
+  { version: 12, sql: multidevicePrepSql },
 ];
 
 export async function runMigrations() {
