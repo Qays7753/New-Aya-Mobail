@@ -1,0 +1,110 @@
+You are working inside the EXISTING POS project. Do NOT create a new project.
+
+GROUND RULES — same as Prompt 1.A. READ before editing. NEVER assume schema.
+DO NOT touch unrelated code. RTL logical CSS. Stop and report if ambiguous.
+After each section: `npx tsc --noEmit` clean, then commit.
+
+TASK: Four bug fixes — payment fees, daily summary integrity, receipt
+math, money parsing safety.
+
+═══════════════════════════════════════════════════════════════
+SECTION B1 — fee_amount on invoice_payments  (audit: F1-03)
+═══════════════════════════════════════════════════════════════
+File: src/db/queries/sales.ts  →  completeSale function.
+
+The schema column `invoice_payments.fee_amount` exists (verify in 001_init.sql
+or 002_remove_debts.sql). It is currently always 0 because the INSERT skips
+this column (around line 171):
+  INSERT INTO invoice_payments (id, invoice_id, account_id, amount)
+
+Required changes:
+1. Before the payments loop, pre-fetch `fee_percent` for every account in
+   `payments` (extend the existing accountMap query to include fee_percent).
+   `accounts.fee_percent` is "بالألف" (per-mille) per the schema comment in
+   001_init.sql — re-verify the unit before computing.
+2. For each payment in the loop, compute:
+     feeAmount = applyPercent(payment.amount, fee_percent / 10)
+   IF the unit is per-mille (verify); otherwise use applyPercent directly.
+   Document the assumption with a brief code comment.
+3. Insert fee_amount into invoice_payments:
+     INSERT INTO invoice_payments
+       (id, invoice_id, account_id, amount, fee_amount)
+     VALUES (?, ?, ?, ?, ?)
+4. Change the balance credit on the account to be the NET:
+     UPDATE accounts SET balance = balance + (amount - feeAmount) WHERE id = ?
+5. The ledger_entries credit entry for this payment should reflect the NET
+   credit (amount - feeAmount). Description unchanged.
+6. Do the same for `returnInvoice` refund payments (mirror logic — feeAmount
+   is also returned on refund).
+7. If `fee_percent` is 0 for an account (cash, etc.), the math degenerates
+   to today's behavior — no functional change for cash.
+
+═══════════════════════════════════════════════════════════════
+SECTION B2 — getDailySummary: exclude returned + add COGS  (audit: F1-04)
+═══════════════════════════════════════════════════════════════
+File: src/db/queries/operations.ts  →  getDailySummary function.
+
+Current problems:
+- Sales query has no status filter → includes returned invoices.
+- netProfit = sales - expenses → ignores COGS entirely.
+
+Required changes:
+1. Add `AND status = 'active'` to the sales SUM query.
+2. Add a new query for COGS:
+     SELECT COALESCE(SUM(ii.unit_cost * ii.quantity), 0) AS cogs
+     FROM invoice_items ii
+     JOIN invoices i ON ii.invoice_id = i.id
+     WHERE i.invoice_date = ? AND i.status = 'active'
+3. Update the returned object:
+     return { date, sales, paidSales, expenses, cogs, totalIn, totalOut,
+              netProfit: sales - cogs - expenses }
+4. Update any dashboard consumer (DashboardPage.tsx) to use the new
+   `cogs` field if it presents it; otherwise the existing netProfit
+   reading will now be correct.
+
+═══════════════════════════════════════════════════════════════
+SECTION B3 — Receipt line total uses real column  (audit: F1-07)
+═══════════════════════════════════════════════════════════════
+File: src/components/receipt/ReceiptOverlay.tsx, around line 67.
+
+Current buggy code:
+  {formatMoney(item.subtotal || Math.round(item.unit_price * item.quantity))}
+
+`item.subtotal` is not a column in invoice_items. The fallback computes
+(unit_price * quantity) which ignores discount.
+
+Required change:
+  {formatMoney(item.line_total)}
+
+`line_total` IS the actual stored column. Verify the receipt query (or
+whatever supplies `item` to ReceiptOverlay) selects `line_total`. If not,
+add it. Also verify all other money fields in the receipt use real columns.
+
+═══════════════════════════════════════════════════════════════
+SECTION B4 — parseMoney rejects negatives  (audit: F1-13)
+═══════════════════════════════════════════════════════════════
+File: src/lib/money.ts  →  parseMoney function.
+
+Current behavior: `parseMoney("-5")` returns -500.
+
+Required change:
+1. Remove the `-` from the cleaning regex so the minus character is
+   stripped before parseFloat. Alternative: after parseFloat, clamp:
+     return Math.max(0, Math.round(parsed * 100));
+2. Pick the clamp approach (simpler, no signed input ever returned).
+
+═══════════════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════════════
+- `npx tsc --noEmit` → 0 errors.
+- fee_amount: a sale paid through an account with fee_percent > 0 records
+  a non-zero fee_amount in invoice_payments AND credits the account by
+  (amount - feeAmount). Cash account with fee_percent = 0 behaves unchanged.
+- getDailySummary: returns include `cogs`; netProfit = sales - cogs -
+  expenses; a returned invoice on the day is NOT counted in `sales`.
+- Receipt: an invoice with a per-line discount shows the correct (post-
+  discount) line total.
+- parseMoney("-50") returns 0. parseMoney("12.34") returns 1234.
+
+Commit: `fix(financial): payment fees + daily summary cogs + receipt total + parseMoney clamp`
+Then `git push origin main`.

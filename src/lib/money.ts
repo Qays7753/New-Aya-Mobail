@@ -46,5 +46,5 @@ export function parseMoney(input: string): number {
   const parsed = parseFloat(cleaned);
   if (isNaN(parsed)) return 0;
   
-  return Math.round(parsed * 100);
+  return Math.max(0, Math.round(parsed * 100));
 }

@@ -64,7 +64,7 @@ export function ReceiptOverlay({ isOpen, onClose, invoice }: ReceiptOverlayProps
                     <tr key={idx}>
                       <td className="py-2 text-start">{item.product_name}</td>
                       <td className="py-2 text-center">{item.quantity}</td>
-                      <td className="py-2 text-end numeric">{formatMoney(item.subtotal || Math.round(item.unit_price * item.quantity))}</td>
+                      <td className="py-2 text-end numeric">{formatMoney(item.line_total)}</td>
                     </tr>
                   ))}
                 </tbody>

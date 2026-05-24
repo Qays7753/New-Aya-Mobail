@@ -30,11 +30,11 @@ export async function getRecentLedgerEntries(limit = 100): Promise<LedgerEntry[]
 export async function getDailySummary(dateString?: string) {
   const targetDate = dateString || format(new Date(), 'yyyy-MM-dd');
 
-  // Total Sales (from invoices)
+  // Total Sales (active invoices only — exclude returned/cancelled)
   const salesResult = await dbClient.query(`
     SELECT SUM(total_amount) as total_sales, SUM(paid_amount) as paid_sales
     FROM invoices 
-    WHERE invoice_date = ?
+    WHERE invoice_date = ? AND status = 'active'
   `, [targetDate]);
 
   // Total Expenses
@@ -42,6 +42,14 @@ export async function getDailySummary(dateString?: string) {
     SELECT SUM(amount) as total_expenses
     FROM expenses 
     WHERE expense_date = ?
+  `, [targetDate]);
+
+  // COGS: sum of (unit_cost * quantity) for active invoice items today
+  const cogsResult = await dbClient.query(`
+    SELECT COALESCE(SUM(ii.unit_cost * ii.quantity), 0) AS cogs
+    FROM invoice_items ii
+    JOIN invoices i ON ii.invoice_id = i.id
+    WHERE i.invoice_date = ? AND i.status = 'active'
   `, [targetDate]);
 
   // Cash Movement (Credit vs Debit in ledger) for the day
@@ -56,6 +64,7 @@ export async function getDailySummary(dateString?: string) {
   const sales = salesResult[0]?.total_sales || 0;
   const paidSales = salesResult[0]?.paid_sales || 0;
   const expenses = expResult[0]?.total_expenses || 0;
+  const cogs = cogsResult[0]?.cogs || 0;
   
   let totalIn = 0;
   let totalOut = 0;
@@ -70,9 +79,10 @@ export async function getDailySummary(dateString?: string) {
     sales,
     paidSales,
     expenses,
+    cogs,
     totalIn,
     totalOut,
-    netProfit: sales - expenses // Simplistic profit
+    netProfit: sales - cogs - expenses
   };
 }
 

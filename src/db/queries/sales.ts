@@ -4,6 +4,7 @@ import { generateSequenceNumber } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useCartStore, calculateItemLineTotal } from '@/stores/cart.store';
 import { logAudit } from './audit';
+import { applyPercent } from '@/lib/money';
 
 export async function completeSale(data: {
   cartItems: ReturnType<typeof useCartStore.getState>['items'];
@@ -43,15 +44,15 @@ export async function completeSale(data: {
 
   const paidAmount = payments.reduce((sum, p) => sum + p.amount, 0);
 
-  // Pre-fetch all accounts for names
+  // Pre-fetch all accounts for names and fee_percent
   const accountIds = payments.map(p => p.accountId);
-  const accountMap = new Map<string, string>();
+  const accountMap = new Map<string, { name: string; feePercent: number }>();
   if (accountIds.length > 0) {
     const accounts = await dbClient.query(
-      `SELECT id, name FROM accounts WHERE id IN (${accountIds.map(() => '?').join(',')})`,
+      `SELECT id, name, fee_percent FROM accounts WHERE id IN (${accountIds.map(() => '?').join(',')})`,
       accountIds
     );
-    accounts.forEach(a => accountMap.set(a.id, a.name));
+    accounts.forEach(a => accountMap.set(a.id, { name: a.name, feePercent: a.fee_percent }));
   }
 
   const stmts: { sql: string; params: any[] }[] = [];
@@ -167,13 +168,18 @@ export async function completeSale(data: {
   for (const payment of payments) {
     if (payment.amount <= 0) continue;
     const paymentId = nanoid();
+    const acct = accountMap.get(payment.accountId);
+    // fee_percent is stored per-mille (بالألف) in schema: e.g. 100 = 10%
+    // Divide by 10 to convert to standard percent before applyPercent
+    const feeAmount = applyPercent(payment.amount, (acct?.feePercent ?? 0) / 10);
+    const netAmount = payment.amount - feeAmount;
     stmts.push({
-      sql: `INSERT INTO invoice_payments (id, invoice_id, account_id, amount) VALUES (?, ?, ?, ?)`,
-      params: [paymentId, invoiceId, payment.accountId, payment.amount],
+      sql: `INSERT INTO invoice_payments (id, invoice_id, account_id, amount, fee_amount) VALUES (?, ?, ?, ?, ?)`,
+      params: [paymentId, invoiceId, payment.accountId, payment.amount, feeAmount],
     });
     stmts.push({
       sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
-      params: [payment.amount, payment.accountId],
+      params: [netAmount, payment.accountId],
     });
     stmts.push({
       sql: `INSERT INTO ledger_entries
@@ -181,8 +187,8 @@ export async function completeSale(data: {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         nanoid(), today, payment.accountId,
-        accountMap.get(payment.accountId) ?? null,
-        'credit', payment.amount, 'invoice', invoiceId,
+        acct?.name ?? null,
+        'credit', netAmount, 'invoice', invoiceId,
         `مبيعات فاتورة رقم ${invoiceNumber}`, now,
       ],
     });
@@ -240,6 +246,17 @@ export async function returnInvoice(invoiceId: string, refunds: { accountId: str
     }
   }
 
+  // Pre-fetch fee_percent for refund accounts
+  const refundAccountIds = refunds.map(r => r.accountId);
+  const refundAccountMap = new Map<string, { name: string; feePercent: number }>();
+  if (refundAccountIds.length > 0) {
+    const accts = await dbClient.query(
+      `SELECT id, name, fee_percent FROM accounts WHERE id IN (${refundAccountIds.map(() => '?').join(',')})`,
+      refundAccountIds
+    );
+    accts.forEach((a: any) => refundAccountMap.set(a.id, { name: a.name, feePercent: a.fee_percent }));
+  }
+
   const newPaidAmount = invoice.paid_amount - totalRefund;
   const newStatus = newPaidAmount === 0 ? 'returned' : 'partially_returned';
   const returnNote = newStatus === 'returned' ? 'تم الاسترجاع الكامل' : 'تم استرجاع جزئي';
@@ -259,13 +276,17 @@ export async function returnInvoice(invoiceId: string, refunds: { accountId: str
 
   for (const refund of refunds) {
     if (refund.amount <= 0) continue;
+    const racct = refundAccountMap.get(refund.accountId);
+    // fee_percent is stored per-mille (بالألف): divide by 10 to get standard percent
+    const refundFee = applyPercent(refund.amount, (racct?.feePercent ?? 0) / 10);
+    const netRefund = refund.amount - refundFee;
     stmts.push({
-      sql: `INSERT INTO invoice_payments (id, invoice_id, account_id, amount) VALUES (?, ?, ?, ?)`,
-      params: [nanoid(), invoiceId, refund.accountId, -refund.amount],
+      sql: `INSERT INTO invoice_payments (id, invoice_id, account_id, amount, fee_amount) VALUES (?, ?, ?, ?, ?)`,
+      params: [nanoid(), invoiceId, refund.accountId, -refund.amount, refundFee],
     });
     stmts.push({
       sql: `UPDATE accounts SET balance = balance - ? WHERE id = ?`,
-      params: [refund.amount, refund.accountId],
+      params: [netRefund, refund.accountId],
     });
     stmts.push({
       sql: `INSERT INTO ledger_entries
@@ -273,7 +294,7 @@ export async function returnInvoice(invoiceId: string, refunds: { accountId: str
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         nanoid(), today, refund.accountId,
-        'debit', refund.amount, 'invoice', invoiceId,
+        'debit', netRefund, 'invoice', invoiceId,
         `استرجاع مبيعات فاتورة رقم ${invoice.invoice_number}`, now,
       ],
     });
