@@ -1,0 +1,196 @@
+You are working inside the EXISTING POS project. Do NOT create a new project.
+
+GROUND RULES — same as before. READ before editing. NEVER assume schema/
+function signatures. DO NOT touch unrelated code. RTL: logical CSS only.
+Brand: copper #CF694A. Currency: د.أ, integer fils. If anything is
+ambiguous, STOP and report — do NOT guess. After each section: `npx tsc
+--noEmit` clean, commit. After all sections: push.
+
+TASK: Make the audit log COMPLETE and TRUSTWORTHY. Currently `logAudit`
+silently swallows errors, and at least 11 sensitive operations never call
+it at all. The owner must be able to investigate "who did what when" for
+every important action.
+
+═══════════════════════════════════════════════════════════════
+SECTION A1 — Stop silent audit failures
+═══════════════════════════════════════════════════════════════
+File: src/db/queries/audit.ts
+
+Current code has an empty `catch {}` inside `logAudit`, dropping audit
+write failures without any signal.
+
+Required change:
+- Replace `catch {}` with:
+    catch (e) {
+      console.error('[audit] failed to write audit entry:', { action, e });
+    }
+- Keep the comment that audit failures must not block business operations
+  — this is correct. We just need a visible error trail in the console.
+
+═══════════════════════════════════════════════════════════════
+SECTION A2 — Add logAudit at every missing write site
+═══════════════════════════════════════════════════════════════
+
+Add `import { logAudit } from './audit';` (or '@/db/queries/audit') at the
+top of each file below if not already imported. Call `logAudit` AFTER the
+main batchRun/run that performs the operation succeeds. Never call it
+inside the transaction.
+
+For each call, use the suggested action key (Arabic snake_case) and a
+descriptive detail string. Pass `refType` and `refId` where applicable.
+
+A2.1 — src/db/queries/expenses.ts
+- `addExpense`: after `dbClient.batchRun(stmts)` succeeds, call:
+    await logAudit(
+      'مصروف_جديد',
+      `${expenseNumber} — ${data.amount/100} د.أ — ${data.description}`,
+      'expense',
+      id
+    );
+- If there are `updateExpense` or `deleteExpense` functions, instrument
+  them similarly with actions 'تعديل_مصروف' and 'حذف_مصروف'. If they do
+  not exist, SKIP — do not create them.
+
+A2.2 — src/db/queries/operations.ts
+- `createTopup`: after batchRun, call:
+    await logAudit(
+      'شحن_جديد',
+      `${topupNumber} — مبلغ ${amount/100} د.أ — تكلفة ${cost/100} د.أ — ربح ${profit/100} د.أ`,
+      'topup',
+      topupId
+    );
+- `createTransfer`: after batchRun, call:
+    await logAudit(
+      'تحويل_جديد',
+      `${transferNumber} — من ${from_account_name} إلى ${to_account_name} — ${amount/100} د.أ`,
+      'transfer',
+      transferId
+    );
+
+A2.3 — src/db/queries/inventory.ts
+- `createAccountReconciliation`: after batchRun, call:
+    await logAudit(
+      'تسوية_حساب',
+      `الحساب ${account_id} — الرصيد النظامي ${system_balance/100} د.أ — الفعلي ${actual_balance/100} د.أ — الفرق ${diff/100} د.أ`,
+      'account',
+      account_id
+    );
+- `createInventoryCount` already has audit (from 1.D) — leave unchanged.
+
+A2.4 — src/db/queries/products.ts
+- `addProduct`: after insert, call:
+    await logAudit(
+      'إضافة_منتج',
+      `${data.name} — السعر ${data.sale_price/100} د.أ — التكلفة ${data.cost_price/100} د.أ`,
+      'product',
+      id
+    );
+- `updateProduct`: today this function emits 'تعديل_سعر_منتج' for price
+  changes. EXTEND it: when fields other than price/cost are changed,
+  emit 'تعديل_منتج' with a brief description of which fields changed.
+  Keep the existing price-change audit untouched.
+- `toggleProductActive`: after update, call:
+    await logAudit(
+      newIsActive ? 'تفعيل_منتج' : 'تعطيل_منتج',
+      `المنتج ${id}`,
+      'product',
+      id
+    );
+
+A2.5 — src/db/queries/categories.ts
+- `addCategory`: after insert → action 'إضافة_فئة', detail = category name + color.
+- `updateCategory`: after update → 'تعديل_فئة', detail = id + brief diff.
+- `deleteCategory` (or deactivate equivalent): action 'حذف_فئة' or
+  'تعطيل_فئة' depending on actual behavior — verify the function. detail
+  = category name.
+
+A2.6 — src/lib/auth.ts
+- `changeDailyLock`: after the new PIN is stored, call:
+    await logAudit('تغيير_PIN_اليومي', 'تم تغيير القفل اليومي', null, null);
+- `changeAdminPin`: similar with 'تغيير_PIN_المشرف'.
+- These functions are in src/lib/auth.ts; importing logAudit from
+  '@/db/queries/audit' is fine — verify no circular import.
+
+A2.7 — src/lib/backup.ts
+- `importDb`: after the DB has been successfully imported AND integrity-
+  checked, call:
+    await logAudit(
+      'استعادة_نسخة_احتياطية',
+      `حجم الملف: ${fileSize} bytes — تم استبدال قاعدة البيانات`,
+      null, null
+    );
+  Place this call BEFORE the page reload so it is committed.
+- If there is a separate `exportDb` function, optionally log
+  'تصدير_نسخة_احتياطية' on success. SKIP if it does not exist.
+
+A2.8 — completeSale enrichment (sales.ts)
+The existing 'إتمام_بيع' audit log call should now include a summary of
+discounts and gifts to make the entry forensically useful. After computing
+the invoice, build a brief detail string:
+
+  const giftCount   = cartItems.filter(i => i.isGift).length;
+  const discountedCount = cartItems.filter(
+    i => !i.isGift && i.discountValue > 0
+  ).length;
+  const overrideCount = cartItems.filter(
+    i => i.overridePrice !== undefined
+  ).length;
+
+  const enrichedDetail =
+    `فاتورة ${invoiceNumber} — الإجمالي ${totalAmount/100} د.أ` +
+    (giftCount       ? ` — هدايا: ${giftCount}` : '') +
+    (discountedCount ? ` — أسطر بخصم: ${discountedCount}` : '') +
+    (overrideCount   ? ` — أسعار معدَّلة: ${overrideCount}` : '');
+
+  await logAudit('إتمام_بيع', enrichedDetail, 'invoice', invoiceId);
+
+Replace the existing simple detail with `enrichedDetail`.
+
+═══════════════════════════════════════════════════════════════
+SECTION A3 — Improve audit log viewer (Settings)
+═══════════════════════════════════════════════════════════════
+File: src/modules/settings/SettingsPage.tsx (or wherever the audit log
+list is rendered — read first to locate).
+
+Current viewer: flat list of latest ~200 entries by timestamp.
+
+Required improvements:
+1. Add filter controls above the list:
+   - Date range (from/to) — default: last 7 days
+   - Action type (multi-select dropdown of distinct actions present in
+     the table — fetched via SELECT DISTINCT action FROM audit_log)
+   - Free-text search in `detail` (debounced 300ms)
+2. Update the underlying query (likely getAuditLog in src/db/queries/
+   audit.ts) to accept these filters as optional parameters:
+     getAuditLog(opts?: {
+       from?: string; to?: string;
+       actions?: string[]; search?: string; limit?: number;
+     })
+   Build the WHERE clause dynamically with parameterised binds (NEVER
+   string-concatenate user input — use ? placeholders).
+3. Add an "تصدير CSV" button that downloads the currently-filtered list
+   as CSV with columns: التاريخ، الفعل، الوصف، مرجع.
+4. Keep the existing visual style; just add the filters/export above
+   the list.
+
+═══════════════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════════════
+- `npx tsc --noEmit` → 0 errors.
+- Every operation in A2.1–A2.7 produces an audit_log row visible in
+  Settings → Audit Log.
+- A failed audit_log INSERT now prints a console.error (test by
+  temporarily breaking the SQL — then revert).
+- Audit log viewer supports filtering by date range, action type, and
+  free text. CSV export works.
+- The 'إتمام_بيع' entry now includes counts of gifts/discounts/overrides
+  in the detail.
+- No business operation is blocked if logAudit fails.
+
+Commit per section (4 commits total recommended):
+  fix(audit): surface logAudit errors instead of swallowing
+  feat(audit): log every missing write event (expenses, topups, transfers, reconciliation, products, categories, pins, backup)
+  feat(audit): enrich completeSale detail with discount/gift/override counts
+  feat(audit): filters + CSV export in audit log viewer
+
+Then `git push origin main`.

@@ -196,8 +196,16 @@ export async function completeSale(data: {
 
   await dbClient.batchRun(stmts);
 
-  // P4: تسجيل سجل التدقيق
-  await logAudit('إتمام_بيع', `فاتورة رقم ${invoiceNumber} — المبلغ: ${totalAmount}`, 'invoice', invoiceId);
+  // P4: تسجيل سجل التدقيق — يشمل ملخص الهدايا والخصومات والأسعار المعدَّلة
+  const giftCount = cartItems.filter(i => i.isGift).length;
+  const discountedCount = cartItems.filter(i => !i.isGift && i.discountValue > 0).length;
+  const overrideCount = cartItems.filter(i => i.overridePrice !== undefined).length;
+  const enrichedDetail =
+    `فاتورة ${invoiceNumber} — الإجمالي ${totalAmount / 100} د.أ` +
+    (giftCount       ? ` — هدايا: ${giftCount}` : '') +
+    (discountedCount ? ` — أسطر بخصم: ${discountedCount}` : '') +
+    (overrideCount   ? ` — أسعار معدَّلة: ${overrideCount}` : '');
+  await logAudit('إتمام_بيع', enrichedDetail, 'invoice', invoiceId);
 
   return { invoiceId, invoiceNumber };
 }

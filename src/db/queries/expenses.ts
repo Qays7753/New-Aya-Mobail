@@ -2,6 +2,7 @@ import { dbClient } from '../client';
 import { nanoid } from 'nanoid';
 import { generateSequenceNumber } from '@/lib/utils';
 import { format } from 'date-fns';
+import { logAudit } from './audit';
 
 export interface ExpenseCategory {
   id: string;
@@ -122,6 +123,12 @@ export async function addExpense(data: {
   });
   
   await dbClient.batchRun(stmts);
+  await logAudit(
+    'مصروف_جديد',
+    `${expenseNumber} — ${amount / 100} د.أ — ${description}`,
+    'expense',
+    id
+  );
   return id;
 }
 

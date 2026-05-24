@@ -108,6 +108,12 @@ export async function addProduct(data: Omit<Product, 'id' | 'is_active'>) {
         data.is_quick_add ? 1 : 0, data.notes || null, data.image_path || null, data.icon || 'Box', now, now
       ]
     );
+    await logAudit(
+      'إضافة_منتج',
+      `${data.name} — السعر ${data.sale_price / 100} د.أ — التكلفة ${(data.cost_price ?? 0) / 100} د.أ`,
+      'product',
+      id
+    );
     return id;
   } catch (err: any) {
     if (err.message?.includes('UNIQUE constraint failed: products.sku')) {
@@ -161,6 +167,15 @@ export async function updateProduct(id: string, data: Partial<Omit<Product, 'id'
         'product', id
       );
     }
+    const nonPriceKeys = Object.keys(data).filter(k => k !== 'sale_price' && k !== 'cost_price');
+    if (nonPriceKeys.length > 0) {
+      const pRows = await dbClient.query(`SELECT name FROM products WHERE id = ?`, [id]);
+      await logAudit(
+        'تعديل_منتج',
+        `${pRows[0]?.name ?? id}: تعديل الحقول — ${nonPriceKeys.join('، ')}`,
+        'product', id
+      );
+    }
   } catch (err: any) {
     if (err.message?.includes('UNIQUE constraint failed: products.sku')) {
       throw new Error('رمز الباركود (SKU) مستخدم مسبقاً لصنف آخر');
@@ -173,5 +188,11 @@ export async function toggleProductActive(id: string, isActive: boolean) {
   await dbClient.run(
     `UPDATE products SET is_active = ?, updated_at = ? WHERE id = ?`,
     [isActive ? 1 : 0, new Date().toISOString(), id]
+  );
+  await logAudit(
+    isActive ? 'تفعيل_منتج' : 'تعطيل_منتج',
+    `المنتج ${id}`,
+    'product',
+    id
   );
 }

@@ -1,32 +1,62 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Settings, Shield, HardDrive, Download, Upload, AlertTriangle, Key, Store, Receipt, ClipboardList, RefreshCw, Tag, Plus, Pencil, Trash2, EyeOff, Eye } from 'lucide-react';
+import { Settings, Shield, HardDrive, Download, Upload, AlertTriangle, Key, Store, Receipt, ClipboardList, RefreshCw, Tag, Plus, Pencil, Trash2, EyeOff, Eye, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { exportDb, importDb } from '@/lib/backup';
 import { changeDailyLock, changeAdminPin } from '@/lib/auth';
 import { useSettingsStore } from '@/stores/settings.store';
-import { getAuditLog } from '@/db/queries/audit';
+import { getAuditLog, getAuditActions } from '@/db/queries/audit';
 import { getCategories, addCategory, updateCategory, deleteCategory, Category } from '@/db/queries/categories';
 import { format, parseISO } from 'date-fns';
 
 const ACTION_LABELS: Record<string, string> = {
   'إتمام_بيع': 'إتمام بيع',
+  'استرجاع_فاتورة_كامل': 'استرجاع كامل',
+  'استرجاع_فاتورة_جزئي': 'استرجاع جزئي',
   'استرجاع_فاتورة': 'استرجاع فاتورة',
   'تغيير_قفل_يومي': 'تغيير قفل اليومية',
   'تغيير_رمز_مشرف': 'تغيير رمز المشرف',
   'استعادة_نسخة_احتياطية': 'استعادة نسخة احتياطية',
+  'تصدير_نسخة_احتياطية': 'تصدير نسخة احتياطية',
   'تعديل_سعر_منتج': 'تعديل سعر منتج',
+  'تعديل_منتج': 'تعديل منتج',
+  'إضافة_منتج': 'إضافة منتج',
+  'تفعيل_منتج': 'تفعيل منتج',
+  'تعطيل_منتج': 'تعطيل منتج',
+  'إضافة_فئة': 'إضافة فئة',
+  'تعديل_فئة': 'تعديل فئة',
+  'حذف_فئة': 'حذف فئة',
+  'مصروف_جديد': 'مصروف جديد',
+  'شحن_جديد': 'شحن جديد',
+  'تحويل_جديد': 'تحويل جديد',
+  'جرد_مخزون': 'جرد مخزون',
+  'تسوية_حساب': 'تسوية حساب',
 };
 
 const ACTION_COLORS: Record<string, string> = {
   'إتمام_بيع': 'bg-success/10 text-success',
+  'استرجاع_فاتورة_كامل': 'bg-danger/10 text-danger',
+  'استرجاع_فاتورة_جزئي': 'bg-warning/10 text-warning',
   'استرجاع_فاتورة': 'bg-danger/10 text-danger',
   'تغيير_قفل_يومي': 'bg-warning/10 text-warning',
   'تغيير_رمز_مشرف': 'bg-danger/10 text-danger',
   'استعادة_نسخة_احتياطية': 'bg-accent/10 text-accent',
+  'تصدير_نسخة_احتياطية': 'bg-accent/10 text-accent',
   'تعديل_سعر_منتج': 'bg-warning/10 text-warning',
+  'تعديل_منتج': 'bg-warning/10 text-warning',
+  'إضافة_منتج': 'bg-success/10 text-success',
+  'تفعيل_منتج': 'bg-success/10 text-success',
+  'تعطيل_منتج': 'bg-muted text-text-secondary',
+  'إضافة_فئة': 'bg-success/10 text-success',
+  'تعديل_فئة': 'bg-warning/10 text-warning',
+  'حذف_فئة': 'bg-danger/10 text-danger',
+  'مصروف_جديد': 'bg-danger/10 text-danger',
+  'شحن_جديد': 'bg-accent/10 text-accent',
+  'تحويل_جديد': 'bg-accent/10 text-accent',
+  'جرد_مخزون': 'bg-warning/10 text-warning',
+  'تسوية_حساب': 'bg-warning/10 text-warning',
 };
 
 interface CategoryForm {
@@ -69,11 +99,60 @@ export default function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { requireAdminAction } = useAuth();
 
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const sevenDaysAgo = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const [auditFrom, setAuditFrom] = useState(sevenDaysAgo);
+  const [auditTo, setAuditTo] = useState(todayStr);
+  const [auditSelectedActions, setAuditSelectedActions] = useState<string[]>([]);
+  const [auditSearch, setAuditSearch] = useState('');
+  const [auditSearchDebounced, setAuditSearchDebounced] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setAuditSearchDebounced(auditSearch), 300);
+    return () => clearTimeout(t);
+  }, [auditSearch]);
+
   const { data: auditRows = [], refetch: refetchAudit } = useQuery({
-    queryKey: ['audit_log'],
-    queryFn: () => getAuditLog(200),
+    queryKey: ['audit_log', auditFrom, auditTo, auditSelectedActions, auditSearchDebounced],
+    queryFn: () => getAuditLog({
+      from: auditFrom || undefined,
+      to: auditTo || undefined,
+      actions: auditSelectedActions.length ? auditSelectedActions : undefined,
+      search: auditSearchDebounced || undefined,
+      limit: 500,
+    }),
     enabled: activeTab === 'audit',
   });
+
+  const { data: auditActionOptions = [] } = useQuery({
+    queryKey: ['audit_actions'],
+    queryFn: getAuditActions,
+    enabled: activeTab === 'audit',
+  });
+
+  const handleExportAuditCsv = () => {
+    const header = 'التاريخ,الفعل,الوصف,مرجع\n';
+    const body = auditRows.map(r => [
+      r.ts,
+      r.action,
+      (r.detail ?? '').replace(/"/g, '""'),
+      r.ref_id ?? '',
+    ].map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + header + body], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   // Categories state
   const [catForm, setCatForm] = useState<CategoryForm>(EMPTY_CAT_FORM);
@@ -567,16 +646,85 @@ export default function SettingsPage() {
                   <h2 className="text-xl font-bold flex items-center gap-2">
                     <ClipboardList className="w-6 h-6 text-accent" /> سجل التدقيق
                   </h2>
-                  <button
-                    onClick={() => refetchAudit()}
-                    className="p-2 text-text-secondary hover:bg-muted rounded-lg transition-colors"
-                    title="تحديث"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleExportAuditCsv}
+                      disabled={auditRows.length === 0}
+                      className="flex items-center gap-1.5 px-3 h-9 text-sm font-medium bg-surface border border-border rounded-lg hover:border-accent hover:text-accent transition-colors disabled:opacity-40"
+                      title="تصدير CSV"
+                    >
+                      <FileDown className="w-4 h-4" />
+                      تصدير CSV
+                    </button>
+                    <button
+                      onClick={() => refetchAudit()}
+                      className="p-2 text-text-secondary hover:bg-muted rounded-lg transition-colors"
+                      title="تحديث"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <p className="text-sm text-text-secondary mb-4" style={{ fontFamily: 'Tajawal, sans-serif' }}>
-                  آخر 200 عملية حساسة — قراءة فقط، الأحدث أولاً.
+
+                {/* Filter Controls */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4 bg-muted rounded-xl border border-border">
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>من تاريخ</label>
+                    <input
+                      type="date"
+                      value={auditFrom}
+                      onChange={e => setAuditFrom(e.target.value)}
+                      className="w-full h-9 px-2 rounded-lg border border-border bg-background outline-none focus:border-accent text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>إلى تاريخ</label>
+                    <input
+                      type="date"
+                      value={auditTo}
+                      onChange={e => setAuditTo(e.target.value)}
+                      className="w-full h-9 px-2 rounded-lg border border-border bg-background outline-none focus:border-accent text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>نوع العملية</label>
+                    <select
+                      multiple
+                      size={3}
+                      value={auditSelectedActions}
+                      onChange={e => setAuditSelectedActions(Array.from(e.target.selectedOptions, o => o.value))}
+                      className="w-full px-2 py-1 rounded-lg border border-border bg-background outline-none focus:border-accent text-sm"
+                      style={{ fontFamily: 'Tajawal, sans-serif' }}
+                    >
+                      {auditActionOptions.map(a => (
+                        <option key={a} value={a}>{ACTION_LABELS[a] ?? a}</option>
+                      ))}
+                    </select>
+                    {auditSelectedActions.length > 0 && (
+                      <button
+                        onClick={() => setAuditSelectedActions([])}
+                        className="text-xs text-accent mt-1 hover:underline"
+                        style={{ fontFamily: 'Tajawal, sans-serif' }}
+                      >
+                        مسح الفلتر
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>بحث في الوصف</label>
+                    <input
+                      type="text"
+                      value={auditSearch}
+                      onChange={e => setAuditSearch(e.target.value)}
+                      placeholder="بحث..."
+                      className="w-full h-9 px-2 rounded-lg border border-border bg-background outline-none focus:border-accent text-sm"
+                      style={{ fontFamily: 'Tajawal, sans-serif' }}
+                    />
+                  </div>
+                </div>
+
+                <p className="text-xs text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>
+                  {auditRows.length} نتيجة — قراءة فقط، الأحدث أولاً.
                 </p>
 
                 <div className="overflow-x-auto rounded-xl border border-border">
@@ -592,7 +740,7 @@ export default function SettingsPage() {
                       {auditRows.length === 0 ? (
                         <tr>
                           <td colSpan={3} className="px-4 py-10 text-center text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>
-                            لا توجد عمليات مسجّلة بعد
+                            لا توجد عمليات تطابق الفلاتر المحددة
                           </td>
                         </tr>
                       ) : auditRows.map(row => (

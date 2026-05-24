@@ -1,0 +1,107 @@
+You are working inside the EXISTING POS project. Do NOT create a new project.
+
+GROUND RULES — same as before. READ before editing. NEVER assume signatures.
+DO NOT touch unrelated code. After each section: `npx tsc --noEmit` clean,
+commit. After all sections: push.
+
+TASK: Gate sensitive admin actions with PIN, and fix the disorienting
+ProtectedRoute redirect-to-/pos behavior.
+
+NOTE: Per the owner's decision, line discounts, invoice-wide discounts,
+and gift toggles are NOT gated. They are monitored via a separate panel
+(prompt 2.C). DO NOT add admin gating on those three.
+
+═══════════════════════════════════════════════════════════════
+SECTION B1 — Wrap sensitive actions in requireAdminAction
+═══════════════════════════════════════════════════════════════
+The AuthContext already exposes `requireAdminAction(callback)`. It either
+runs the callback (if admin session is active) or shows the AdminPinDialog
+and runs it after a successful PIN entry.
+
+Apply this wrapper to the following triggers. Verify each file/line before
+editing.
+
+B1.1 — Price override in cart
+- File: src/modules/pos/components/CartSidebar.tsx
+- Locate the handler that calls `setItemPrice(...)` (from the cart store)
+  when the user submits the "السعر" NumPad dialog.
+- Wrap the call: `requireAdminAction(() => setItemPrice(...))`.
+
+B1.2 — Top-up creation
+- File: src/modules/operations/components/TopupDialog.tsx
+- The submit handler that calls `createTopup(...)`. Wrap it.
+
+B1.3 — Account reconciliation
+- File: src/modules/inventory/InventoryPage.tsx (reconciliation tab)
+- The submit handler that calls `createAccountReconciliation(...)`. Wrap it.
+
+B1.4 — Backup restore
+- File: src/modules/settings/SettingsPage.tsx (Backup tab)
+- The handler that triggers `importDb(...)` after the user selects a file.
+  Wrap the IMPORT call itself; file selection can stay outside the gate.
+
+B1.5 — Category deletion (or deactivation)
+- File: src/modules/settings/SettingsPage.tsx (or wherever the categories
+  manager lives — read first to locate).
+- The delete/deactivate handler that calls `deleteCategory(...)`. Wrap it.
+
+B1.6 — Receipt template / store-info changes
+- File: src/modules/settings/SettingsPage.tsx (General tab)
+- The "Save" button that persists store name, phone, address, receipt
+  header, receipt footer. Wrap the save handler.
+
+For each wrapped action, do NOT change the function's parameters or its
+async/sync nature; only gate the call site.
+
+═══════════════════════════════════════════════════════════════
+SECTION B2 — Fix ProtectedRoute cancel UX
+═══════════════════════════════════════════════════════════════
+File: src/components/layout/ProtectedRoute.tsx
+
+Current behavior: on cancel, `navigate('/pos')` — disorienting. A cashier
+who taps "Reports" then cancels lands in POS with no explanation.
+
+Required change:
+1. Replace `navigate('/pos')` with `navigate(-1)` to return to the
+   previous page where the user came from.
+2. Just before the navigation, fire a sonner toast (already used in the
+   project) with a clear Arabic message:
+     toast.info('صلاحية المشرف مطلوبة للوصول لهذه الصفحة');
+3. Edge case: if there is no previous entry (direct deep-link), fall back
+   to `/pos`. Use `if (window.history.length > 1) navigate(-1); else navigate('/pos');`.
+
+═══════════════════════════════════════════════════════════════
+SECTION B3 — Admin session indicator (minor UX)
+═══════════════════════════════════════════════════════════════
+The admin session lives 15 minutes from grant. Today there is no visible
+indicator that "admin mode is active right now."
+
+Required addition:
+- In the global layout (e.g., src/components/layout/Shell.tsx or TopBar.tsx),
+  when `isAdminPinValidUntil` is set and in the future, render a small
+  badge (top-end, near safe area) showing a copper #CF694A chip with the
+  text "وضع المشرف نشط" and the remaining minutes.
+- The badge updates every 30 seconds. When it reaches 0, it disappears.
+- On POS route, the chrome is hidden; render the badge as an absolute
+  floating element with `position: fixed; top: 8px; end: 8px; z-index: 30`.
+- Do NOT add this badge inside dialogs or modals.
+
+═══════════════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════════════
+- `npx tsc --noEmit` → 0 errors.
+- B1: each of the 6 actions, when triggered while admin session is
+  inactive, shows the AdminPinDialog and proceeds only after a correct
+  PIN. When admin session is active, the action runs immediately.
+- B2: cancelling the AdminPinDialog returns to the previous page and
+  shows the toast. Deep-link cancel falls back to /pos.
+- B3: badge appears within 1 second of granting admin access, counts
+  down, and disappears at expiry. Visible on every route including POS.
+- Cashier-only flows (apply discount, mark gift) are NOT gated.
+
+Commit (3 commits recommended):
+  feat(admin): require admin PIN for price override, topup, reconciliation, backup restore, category delete, settings save
+  fix(admin): ProtectedRoute returns to previous page with explanatory toast
+  feat(admin): visible admin-session indicator badge
+
+Then `git push origin main`.

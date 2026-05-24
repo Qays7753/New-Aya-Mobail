@@ -112,4 +112,10 @@ export async function createAccountReconciliation(account_id: string, actual_bal
   ];
 
   await dbClient.batchRun(tx);
+  await logAudit(
+    'تسوية_حساب',
+    `الحساب ${account_id} — الرصيد النظامي ${system_balance / 100} د.أ — الفعلي ${actual_balance / 100} د.أ — الفرق ${diff / 100} د.أ`,
+    'account',
+    account_id
+  );
 }

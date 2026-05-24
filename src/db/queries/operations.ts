@@ -1,6 +1,7 @@
 import { dbClient } from '../client';
 import { format } from 'date-fns';
 import { nanoid } from 'nanoid';
+import { logAudit } from './audit';
 
 export interface LedgerEntry {
   id: string;
@@ -144,6 +145,12 @@ export async function createTopup({
   ];
 
   await dbClient.batchRun(tx);
+  await logAudit(
+    'شحن_جديد',
+    `${topupNumber} — مبلغ ${amount / 100} د.أ — تكلفة ${cost / 100} د.أ — ربح ${profit / 100} د.أ`,
+    'topup',
+    topupId
+  );
   return { id: topupId, topupNumber };
 }
 
@@ -222,6 +229,12 @@ export async function createTransfer({
   ];
 
   await dbClient.batchRun(tx);
+  await logAudit(
+    'تحويل_جديد',
+    `${transferNumber} — من ${from_account_name} إلى ${to_account_name} — ${amount / 100} د.أ`,
+    'transfer',
+    transferId
+  );
   return { id: transferId, transferNumber };
 }
 

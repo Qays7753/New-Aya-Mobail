@@ -1,4 +1,5 @@
 import { dbClient } from '../client';
+import { logAudit } from './audit';
 
 export interface Category {
   id: string;
@@ -30,6 +31,7 @@ export async function addCategory(data: {
      VALUES (?, ?, ?, ?, ?, 1, datetime('now'))`,
     [id, data.name.trim(), data.color, data.icon, data.sort_order]
   );
+  await logAudit('إضافة_فئة', `${data.name.trim()} — اللون: ${data.color}`, 'category', id);
   return id;
 }
 
@@ -49,6 +51,7 @@ export async function updateCategory(
   if (fields.length === 0) return;
   values.push(id);
   await dbClient.run(`UPDATE categories SET ${fields.join(', ')} WHERE id = ?`, values);
+  await logAudit('تعديل_فئة', `الفئة ${id} — الحقول: ${fields.map(f => f.split(' =')[0]).join('، ')}`, 'category', id);
 }
 
 export async function deleteCategory(id: string): Promise<void> {
@@ -61,5 +64,8 @@ export async function deleteCategory(id: string): Promise<void> {
       `لا يمكن حذف هذه الفئة لأنها مرتبطة بـ ${linked[0].count} منتج نشط. انقلها إلى فئة أخرى أولاً أو أوقف الفئة.`
     );
   }
+  const catRows = await dbClient.query(`SELECT name FROM categories WHERE id = ?`, [id]);
+  const catName = catRows[0]?.name ?? id;
   await dbClient.run(`DELETE FROM categories WHERE id = ?`, [id]);
+  await logAudit('حذف_فئة', catName, 'category', id);
 }
