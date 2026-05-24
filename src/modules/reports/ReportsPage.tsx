@@ -5,11 +5,12 @@ import { formatMoney } from '@/lib/money';
 import {
   BarChart3, TrendingUp, TrendingDown, Receipt, Calendar,
   Download, Package, Target, RefreshCw, DollarSign,
-  ShoppingBag, Percent, PieChart as PieChartIcon,
+  ShoppingBag, Percent, PieChart as PieChartIcon, Tag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, parseISO } from 'date-fns';
 import * as XLSX from 'xlsx';
+import { DiscountsGiftsTab } from './DiscountsGiftsTab';
 
 const ReactECharts = lazy(() => import('echarts-for-react'));
 
@@ -60,7 +61,7 @@ function KpiCard({
   );
 }
 
-type Tab = 'overview' | 'categories' | 'products' | 'daily' | 'expenses';
+type Tab = 'overview' | 'categories' | 'products' | 'daily' | 'expenses' | 'discounts';
 
 export default function ReportsPage() {
   const [period, setPeriod] = useState<Period>('month');
@@ -111,6 +112,7 @@ export default function ReportsPage() {
     { id: 'products', label: 'المنتجات', icon: Package },
     { id: 'daily', label: 'يومي', icon: Calendar },
     { id: 'expenses', label: 'المصاريف', icon: TrendingDown },
+    { id: 'discounts', label: 'الخصومات والهدايا', icon: Tag },
   ];
 
   const kpi = report?.kpi;
@@ -513,6 +515,10 @@ export default function ReportsPage() {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {activeTab === 'discounts' && (
+                <DiscountsGiftsTab from={from} to={to} />
               )}
 
               {activeTab === 'expenses' && (
