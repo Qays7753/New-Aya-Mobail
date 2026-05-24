@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { nanoid } from 'nanoid';
 import { logAudit } from './audit';
 import { isDayClosed } from './closures';
+import { getDeviceId } from '@/lib/device';
 
 export interface LedgerEntry {
   id: string;
@@ -143,6 +144,7 @@ export async function createTopup({
     throw new Error(`يوم ${dateStr} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
   }
   const timestamp = now.toISOString();
+  const deviceId = getDeviceId();
 
   let supplier_name: string | null = null;
   if (supplier_id) {
@@ -167,18 +169,18 @@ export async function createTopup({
       params: [nextVal]
     },
     {
-      sql: `INSERT INTO topups (id, topup_number, topup_date, account_id, account_name, supplier_id, supplier_name, amount, cost, profit, notes, created_at)
+      sql: `INSERT INTO topups (id, topup_number, topup_date, account_id, account_name, supplier_id, supplier_name, amount, cost, profit, notes, created_at, updated_at, device_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [topupId, topupNumber, dateStr, account_id, account_name, supplier_id || null, supplier_name, amount, cost, profit, notes || null, timestamp, timestamp, deviceId]
+    },
+    {
+      sql: `UPDATE accounts SET balance = balance + ?, updated_at = ? WHERE id = ?`,
+      params: [amount, timestamp, account_id]
+    },
+    {
+      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at, updated_at, device_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [topupId, topupNumber, dateStr, account_id, account_name, supplier_id || null, supplier_name, amount, cost, profit, notes || null, timestamp]
-    },
-    {
-      sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
-      params: [amount, account_id]
-    },
-    {
-      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [nanoid(), dateStr, account_id, account_name, 'credit', amount, 'topup', topupId, `شحن رصيد: ${topupNumber}`, timestamp]
+      params: [nanoid(), dateStr, account_id, account_name, 'credit', amount, 'topup', topupId, `شحن رصيد: ${topupNumber}`, timestamp, timestamp, deviceId]
     }
   ];
 
@@ -214,6 +216,7 @@ export async function createTransfer({
     throw new Error(`يوم ${dateStr} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
   }
   const timestamp = now.toISOString();
+  const deviceId = getDeviceId();
 
   let from_account_name: string | null = null;
   let to_account_name: string | null = null;
@@ -245,27 +248,27 @@ export async function createTransfer({
       params: [nextVal]
     },
     {
-      sql: `INSERT INTO transfers (id, transfer_number, transfer_date, from_account_id, from_account_name, to_account_id, to_account_name, amount, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [transferId, transferNumber, dateStr, from_account_id, from_account_name, to_account_id, to_account_name, amount, notes || null, timestamp]
+      sql: `INSERT INTO transfers (id, transfer_number, transfer_date, from_account_id, from_account_name, to_account_id, to_account_name, amount, notes, created_at, updated_at, device_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [transferId, transferNumber, dateStr, from_account_id, from_account_name, to_account_id, to_account_name, amount, notes || null, timestamp, timestamp, deviceId]
     },
     {
-      sql: `UPDATE accounts SET balance = balance - ? WHERE id = ?`,
-      params: [amount, from_account_id]
+      sql: `UPDATE accounts SET balance = balance - ?, updated_at = ? WHERE id = ?`,
+      params: [amount, timestamp, from_account_id]
     },
     {
-      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [nanoid(), dateStr, from_account_id, from_account_name, 'debit', amount, 'transfer', transferId, `تحويل صادر: ${transferNumber}`, timestamp]
+      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at, updated_at, device_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [nanoid(), dateStr, from_account_id, from_account_name, 'debit', amount, 'transfer', transferId, `تحويل صادر: ${transferNumber}`, timestamp, timestamp, deviceId]
     },
     {
-      sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
-      params: [amount, to_account_id]
+      sql: `UPDATE accounts SET balance = balance + ?, updated_at = ? WHERE id = ?`,
+      params: [amount, timestamp, to_account_id]
     },
     {
-      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [nanoid(), dateStr, to_account_id, to_account_name, 'credit', amount, 'transfer', transferId, `تحويل وارد: ${transferNumber}`, timestamp]
+      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at, updated_at, device_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [nanoid(), dateStr, to_account_id, to_account_name, 'credit', amount, 'transfer', transferId, `تحويل وارد: ${transferNumber}`, timestamp, timestamp, deviceId]
     }
   ];
 
@@ -278,4 +281,3 @@ export async function createTransfer({
   );
   return { id: transferId, transferNumber };
 }
-

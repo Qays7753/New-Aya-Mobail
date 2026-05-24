@@ -4,6 +4,7 @@ import { generateSequenceNumber } from '@/lib/utils';
 import { format } from 'date-fns';
 import { logAudit } from './audit';
 import { isDayClosed } from './closures';
+import { getDeviceId } from '@/lib/device';
 
 export interface ExpenseCategory {
   id: string;
@@ -85,6 +86,7 @@ export async function addExpense(data: {
 
   const id = nanoid();
   const now = new Date().toISOString();
+  const deviceId = getDeviceId();
   
   // Get sequence
   const seqResult = await dbClient.query("SELECT last_val FROM sequences WHERE name = 'expense'");
@@ -102,28 +104,24 @@ export async function addExpense(data: {
 
   // 1. Create expense record
   stmts.push({
-    sql: `
-      INSERT INTO expenses (id, expense_number, amount, category_id, category_name, description, account_id, account_name, expense_date, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    params: [id, expenseNumber, amount, category_id, category_name, description, accountId, account_name, today, now]
+    sql: `INSERT INTO expenses (id, expense_number, amount, category_id, category_name, description, account_id, account_name, expense_date, created_at, updated_at, device_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [id, expenseNumber, amount, category_id, category_name, description, accountId, account_name, today, now, now, deviceId]
   });
   
   // 2. Remove from account
   stmts.push({
-    sql: `UPDATE accounts SET balance = balance - ? WHERE id = ?`,
-    params: [amount, accountId]
+    sql: `UPDATE accounts SET balance = balance - ?, updated_at = ? WHERE id = ?`,
+    params: [amount, now, accountId]
   });
   
   // 3. Ledger entry
   stmts.push({
-    sql: `
-      INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
+    sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at, updated_at, device_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       nanoid(), today, accountId, account_name, 'debit', amount, 'expense', id, 
-      `مصروف: ${description}`, now
+      `مصروف: ${description}`, now, now, deviceId
     ]
   });
   

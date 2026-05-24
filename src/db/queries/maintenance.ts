@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { logAudit } from './audit';
 import { formatMoney } from '@/lib/money';
 import { isDayClosed } from './closures';
+import { getDeviceId } from '@/lib/device';
 
 export interface MaintenanceJob {
   id: string;
@@ -57,6 +58,7 @@ export async function addJob(data: {
 }) {
   const id = nanoid();
   const now = new Date().toISOString();
+  const deviceId = getDeviceId();
   // Get sequence
   const seqResult = await dbClient.query("SELECT last_val FROM sequences WHERE name = 'maintenance'");
   let nextVal = 1;
@@ -71,15 +73,13 @@ export async function addJob(data: {
   });
   
   stmts.push({
-    sql: `
-      INSERT INTO maintenance_jobs 
-      (id, job_number, job_date, customer_name, customer_phone, device_type, issue_description, estimated_cost, status, notes, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)
-    `,
+    sql: `INSERT INTO maintenance_jobs 
+      (id, job_number, job_date, customer_name, customer_phone, device_type, issue_description, estimated_cost, status, notes, created_at, updated_at, device_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?)`,
     params: [
       id, jobNumber, data.job_date, data.customer_name, data.customer_phone || null, 
       data.device_type, data.issue_description, data.estimated_cost, 
-      data.notes || null, now, now
+      data.notes || null, now, now, deviceId
     ]
   });
   
@@ -91,6 +91,7 @@ export async function updateJobStatus(id: string, status: MaintenanceJob['status
   const now = new Date();
   const dateStr = format(now, 'yyyy-MM-dd HH:mm:ss');
   const onlyDateStr = format(now, 'yyyy-MM-dd');
+  const deviceId = getDeviceId();
   
   if (status === 'delivered') {
     if (final_amount === undefined || !payment_account_id) {
@@ -119,13 +120,13 @@ export async function updateJobStatus(id: string, status: MaintenanceJob['status
         params: [status, dateStr, dateStr, final_amount, payment_account_id, id]
       },
       {
-        sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
-        params: [final_amount, payment_account_id]
+        sql: `UPDATE accounts SET balance = balance + ?, updated_at = ? WHERE id = ?`,
+        params: [final_amount, dateStr, payment_account_id]
       },
       {
-        sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        params: [nanoid(), onlyDateStr, payment_account_id, account_name, 'credit', final_amount, 'maintenance', id, `إيراد صيانة: ${job_number}`, dateStr]
+        sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at, updated_at, device_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [nanoid(), onlyDateStr, payment_account_id, account_name, 'credit', final_amount, 'maintenance', id, `إيراد صيانة: ${job_number}`, dateStr, dateStr, deviceId]
       }
     ];
     await dbClient.batchRun(tx);

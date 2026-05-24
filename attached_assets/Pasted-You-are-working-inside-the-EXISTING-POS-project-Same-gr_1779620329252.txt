@@ -1,0 +1,76 @@
+You are working inside the EXISTING POS project. Same ground rules.
+After each section: tsc clean, commit. Push at end.
+
+TASK: Every write (INSERT/UPDATE) must carry device_id and bump
+updated_at. This is the data foundation for sync detection later.
+
+═══════════════════════════════════════════════════════════════
+SECTION P4B.1 — Inject device_id into every INSERT
+═══════════════════════════════════════════════════════════════
+At top of each affected file add: `import { getDeviceId } from '@/lib/device';`
+
+For each INSERT in the functions below, add `device_id` to the column
+list AND append `getDeviceId()` to the params array.
+
+Files / functions to instrument (verify each):
+  src/db/queries/sales.ts
+    completeSale → invoices, invoice_items (per line), invoice_payments,
+    ledger_entries inserts
+    returnInvoice → invoice_payments (refund), ledger_entries (debit)
+  src/db/queries/expenses.ts
+    addExpense → expenses, ledger_entries
+  src/db/queries/operations.ts
+    createTopup → topups, ledger_entries
+    createTransfer → transfers, ledger_entries (both legs)
+  src/db/queries/inventory.ts
+    createInventoryCount → inventory_counts, ledger_entries (adjustment)
+    createAccountReconciliation → ledger_entries
+  src/db/queries/maintenance.ts
+    addJob → maintenance_jobs
+    updateJobStatus(delivered) → ledger_entries
+  src/db/queries/closures.ts
+    closeDay → day_closures, ledger_entries (variance)
+  src/db/queries/audit.ts
+    logAudit → audit_log (add device_id column to the INSERT and
+    `getDeviceId()` to params)
+
+═══════════════════════════════════════════════════════════════
+SECTION P4B.2 — Set updated_at on inserts AND updates
+═══════════════════════════════════════════════════════════════
+For every INSERT into a table that now has `updated_at`, include the
+column set to `new Date().toISOString()` (same value as created_at).
+
+For every UPDATE, include `updated_at = ?` in the SET clause with
+the current ISO timestamp.
+
+Cover the same files as P4B.1, plus:
+  - updateProduct (products)
+  - updateCategory (categories)
+  - updateExpense (if exists)
+  - updateJobStatus (maintenance_jobs)
+  - toggleProductActive (products) — bump updated_at
+
+═══════════════════════════════════════════════════════════════
+SECTION P4B.3 — Audit log viewer: show device
+═══════════════════════════════════════════════════════════════
+File: SettingsPage audit log viewer.
+- Add a "الجهاز" column showing the raw device_id (no resolution yet —
+  device id table comes in Phase 6).
+- Add a filter dropdown listing distinct device_ids in audit_log.
+- Add the device column to the CSV export.
+
+═══════════════════════════════════════════════════════════════
+ACCEPTANCE
+═══════════════════════════════════════════════════════════════
+- `npx tsc --noEmit` → 0 errors.
+- Every new INSERT (verify via DB inspection on a fresh sale, expense,
+  topup, transfer, etc.) has non-null `device_id` matching getDeviceId().
+- Every UPDATE bumps updated_at.
+- Audit log viewer shows the device id column and filters by device.
+
+Commits:
+  feat(sync-prep): tag every new write with device_id
+  feat(sync-prep): bump updated_at on every write and update
+  feat(audit): device column + filter in audit log viewer
+
+Push origin main.

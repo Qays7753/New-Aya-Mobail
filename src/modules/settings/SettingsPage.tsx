@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { exportDb, importDb } from '@/lib/backup';
 import { changeDailyLock, changeAdminPin } from '@/lib/auth';
 import { useSettingsStore } from '@/stores/settings.store';
-import { getAuditLog, getAuditActions } from '@/db/queries/audit';
+import { getAuditLog, getAuditActions, getAuditDevices } from '@/db/queries/audit';
 import { getDeviceId, getDeviceName, setDeviceName } from '@/lib/device';
 import { getCategories, addCategory, updateCategory, deleteCategory, Category } from '@/db/queries/categories';
 import { format, parseISO } from 'date-fns';
@@ -114,6 +114,7 @@ export default function SettingsPage() {
   const [auditFrom, setAuditFrom] = useState(sevenDaysAgo);
   const [auditTo, setAuditTo] = useState(todayStr);
   const [auditSelectedActions, setAuditSelectedActions] = useState<string[]>([]);
+  const [auditSelectedDevice, setAuditSelectedDevice] = useState('');
   const [auditSearch, setAuditSearch] = useState('');
   const [auditSearchDebounced, setAuditSearchDebounced] = useState('');
 
@@ -123,12 +124,13 @@ export default function SettingsPage() {
   }, [auditSearch]);
 
   const { data: auditRows = [], refetch: refetchAudit } = useQuery({
-    queryKey: ['audit_log', auditFrom, auditTo, auditSelectedActions, auditSearchDebounced],
+    queryKey: ['audit_log', auditFrom, auditTo, auditSelectedActions, auditSearchDebounced, auditSelectedDevice],
     queryFn: () => getAuditLog({
       from: auditFrom || undefined,
       to: auditTo || undefined,
       actions: auditSelectedActions.length ? auditSelectedActions : undefined,
       search: auditSearchDebounced || undefined,
+      deviceId: auditSelectedDevice || undefined,
       limit: 500,
     }),
     enabled: activeTab === 'audit',
@@ -140,13 +142,20 @@ export default function SettingsPage() {
     enabled: activeTab === 'audit',
   });
 
+  const { data: auditDeviceOptions = [] } = useQuery({
+    queryKey: ['audit_devices'],
+    queryFn: getAuditDevices,
+    enabled: activeTab === 'audit',
+  });
+
   const handleExportAuditCsv = () => {
-    const header = 'التاريخ,الفعل,الوصف,مرجع\n';
+    const header = 'التاريخ,الفعل,الوصف,مرجع,الجهاز\n';
     const body = auditRows.map(r => [
       r.ts,
       r.action,
       (r.detail ?? '').replace(/"/g, '""'),
       r.ref_id ?? '',
+      r.device_id ?? '',
     ].map(v => `"${v}"`).join(',')).join('\n');
     const blob = new Blob(['\uFEFF' + header + body], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -727,7 +736,7 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Filter Controls */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4 bg-muted rounded-xl border border-border">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-4 bg-muted rounded-xl border border-border">
                   <div>
                     <label className="block text-xs font-medium mb-1 text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>من تاريخ</label>
                     <input
@@ -771,6 +780,20 @@ export default function SettingsPage() {
                     )}
                   </div>
                   <div>
+                    <label className="block text-xs font-medium mb-1 text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>الجهاز</label>
+                    <select
+                      value={auditSelectedDevice}
+                      onChange={e => setAuditSelectedDevice(e.target.value)}
+                      className="w-full h-9 px-2 rounded-lg border border-border bg-background outline-none focus:border-accent text-sm"
+                      dir="ltr"
+                    >
+                      <option value="">الكل</option>
+                      {auditDeviceOptions.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-xs font-medium mb-1 text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>بحث في الوصف</label>
                     <input
                       type="text"
@@ -794,12 +817,13 @@ export default function SettingsPage() {
                         <th className="px-4 py-3 text-start whitespace-nowrap" style={{ fontFamily: 'Tajawal, sans-serif' }}>التاريخ والوقت</th>
                         <th className="px-4 py-3 text-start whitespace-nowrap" style={{ fontFamily: 'Tajawal, sans-serif' }}>نوع العملية</th>
                         <th className="px-4 py-3 text-start" style={{ fontFamily: 'Tajawal, sans-serif' }}>الوصف</th>
+                        <th className="px-4 py-3 text-start whitespace-nowrap" style={{ fontFamily: 'Tajawal, sans-serif' }}>الجهاز</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {auditRows.length === 0 ? (
                         <tr>
-                          <td colSpan={3} className="px-4 py-10 text-center text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>
+                          <td colSpan={4} className="px-4 py-10 text-center text-text-secondary" style={{ fontFamily: 'Tajawal, sans-serif' }}>
                             لا توجد عمليات تطابق الفلاتر المحددة
                           </td>
                         </tr>
@@ -818,6 +842,9 @@ export default function SettingsPage() {
                           </td>
                           <td className="px-4 py-3 text-text-primary" style={{ fontFamily: 'Tajawal, sans-serif' }}>
                             {row.detail ?? '—'}
+                          </td>
+                          <td className="px-4 py-3 text-text-secondary whitespace-nowrap" dir="ltr" style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px' }}>
+                            {row.device_id ?? '—'}
                           </td>
                         </tr>
                       ))}

@@ -49,6 +49,8 @@ export async function updateCategory(
   if (data.is_active !== undefined)  { fields.push('is_active = ?');  values.push(data.is_active ? 1 : 0); }
 
   if (fields.length === 0) return;
+  fields.push('updated_at = ?');
+  values.push(new Date().toISOString());
   values.push(id);
   await dbClient.run(`UPDATE categories SET ${fields.join(', ')} WHERE id = ?`, values);
   await logAudit('تعديل_فئة', `الفئة ${id} — الحقول: ${fields.map(f => f.split(' =')[0]).join('، ')}`, 'category', id);

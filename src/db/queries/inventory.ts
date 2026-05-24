@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { nanoid } from 'nanoid';
 import { logAudit } from './audit';
 import { isDayClosed } from './closures';
+import { getDeviceId } from '@/lib/device';
 
 export async function createInventoryCount(items: { product_id: string; system_qty: number; actual_qty: number; reason: string }[], notes?: string) {
   const now = new Date();
@@ -12,6 +13,7 @@ export async function createInventoryCount(items: { product_id: string; system_q
     throw new Error(`يوم ${entryDate} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
   }
   const countId = nanoid();
+  const deviceId = getDeviceId();
 
   // Pre-fetch cost_price for all products in this count
   const productIds = items.map(i => i.product_id);
@@ -23,8 +25,8 @@ export async function createInventoryCount(items: { product_id: string; system_q
 
   const tx: {sql: string, params: any[]}[] = [
     {
-      sql: `INSERT INTO inventory_counts (id, count_date, status, notes, created_at) VALUES (?, ?, ?, ?, ?)`,
-      params: [countId, dateStr, 'completed', notes || null, dateStr]
+      sql: `INSERT INTO inventory_counts (id, count_date, status, notes, created_at, device_id) VALUES (?, ?, ?, ?, ?, ?)`,
+      params: [countId, dateStr, 'completed', notes || null, dateStr, deviceId]
     }
   ];
 
@@ -37,8 +39,8 @@ export async function createInventoryCount(items: { product_id: string; system_q
 
     // Update actual stock (integer — no toString)
     tx.push({
-      sql: `UPDATE products SET stock_qty = ? WHERE id = ?`,
-      params: [item.actual_qty, item.product_id]
+      sql: `UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?`,
+      params: [item.actual_qty, new Date().toISOString(), item.product_id]
     });
 
     // Ledger entry for any discrepancy
@@ -49,13 +51,13 @@ export async function createInventoryCount(items: { product_id: string; system_q
       tx.push({
         sql: `INSERT INTO ledger_entries
                (id, entry_date, account_id, account_name, type, amount,
-                ref_type, ref_id, description, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ref_type, ref_id, description, created_at, updated_at, device_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params: [
           nanoid(), entryDate, null, null,
           entryType, value, 'inventory_adjustment', countId,
           `تعديل مخزون: ${item.product_id} (${diff > 0 ? '+' : ''}${diff} وحدة)`,
-          dateStr
+          dateStr, dateStr, deviceId
         ]
       });
     }
@@ -93,6 +95,7 @@ export async function createAccountReconciliation(account_id: string, actual_bal
     throw new Error(`يوم ${dateStr} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
   }
   const timestamp = now.toISOString();
+  const deviceId = getDeviceId();
 
   // Get current balance
   const accountResult = await dbClient.query(`SELECT balance FROM accounts WHERE id = ?`, [account_id]);
@@ -108,13 +111,13 @@ export async function createAccountReconciliation(account_id: string, actual_bal
 
   const tx = [
     {
-      sql: `UPDATE accounts SET balance = ? WHERE id = ?`,
-      params: [actual_balance, account_id]
+      sql: `UPDATE accounts SET balance = ?, updated_at = ? WHERE id = ?`,
+      params: [actual_balance, timestamp, account_id]
     },
     {
-      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [nanoid(), dateStr, account_id, type, amount, 'reconciliation', null, 'تسوية حساب: تعديل الرصيد الفعلي', timestamp]
+      sql: `INSERT INTO ledger_entries (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at, updated_at, device_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [nanoid(), dateStr, account_id, type, amount, 'reconciliation', null, 'تسوية حساب: تعديل الرصيد الفعلي', timestamp, timestamp, deviceId]
     }
   ];
 

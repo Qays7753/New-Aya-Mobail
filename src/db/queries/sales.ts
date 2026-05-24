@@ -6,6 +6,7 @@ import { useCartStore, calculateItemLineTotal } from '@/stores/cart.store';
 import { logAudit } from './audit';
 import { applyPercent, formatMoney } from '@/lib/money';
 import { isDayClosed } from './closures';
+import { getDeviceId } from '@/lib/device';
 
 export async function completeSale(data: {
   cartItems: ReturnType<typeof useCartStore.getState>['items'];
@@ -45,6 +46,7 @@ export async function completeSale(data: {
     throw new Error(`يوم ${today} مُقفَل. تواصل مع المشرف لفتحه قبل التعديل.`);
   }
   const now = new Date().toISOString();
+  const deviceId = getDeviceId();
 
   const paidAmount = payments.reduce((sum, p) => sum + p.amount, 0);
 
@@ -76,10 +78,10 @@ export async function completeSale(data: {
   // 2. Create invoice
   stmts.push({
     sql: `INSERT INTO invoices (id, invoice_number, invoice_date, customer_id, customer_name, customer_phone,
-            subtotal, discount_amount, total_amount, paid_amount, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            subtotal, discount_amount, total_amount, paid_amount, created_at, updated_at, device_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [invoiceId, invoiceNumber, today, null, null, null,
-      subtotal, totalDiscount, totalAmount, paidAmount, now],
+      subtotal, totalDiscount, totalAmount, paidAmount, now, now, deviceId],
   });
 
   // 3. Compute per-item line data using shared helper
@@ -126,8 +128,9 @@ export async function completeSale(data: {
       stmts.push({
         sql: `INSERT INTO invoice_items
                 (id, invoice_id, product_id, product_name, quantity,
-                 unit_price, unit_cost, product_category, discount_amount, line_total, is_gift)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 unit_price, unit_cost, product_category, discount_amount, line_total, is_gift,
+                 updated_at, device_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params: [
           itemId, invoiceId,
           item.product.id, item.product.name, item.quantity,
@@ -137,6 +140,7 @@ export async function completeSale(data: {
           itemSub,
           0,
           1,
+          now, deviceId,
         ],
       });
     } else {
@@ -145,8 +149,9 @@ export async function completeSale(data: {
       stmts.push({
         sql: `INSERT INTO invoice_items
                 (id, invoice_id, product_id, product_name, quantity,
-                 unit_price, unit_cost, product_category, discount_amount, line_total, is_gift)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 unit_price, unit_cost, product_category, discount_amount, line_total, is_gift,
+                 updated_at, device_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params: [
           itemId, invoiceId,
           item.product.id, item.product.name, item.quantity,
@@ -156,6 +161,7 @@ export async function completeSale(data: {
           discountAmount,
           lineTotal,
           0,
+          now, deviceId,
         ],
       });
     }
@@ -178,22 +184,22 @@ export async function completeSale(data: {
     const feeAmount = applyPercent(payment.amount, (acct?.feePercent ?? 0) / 10);
     const netAmount = payment.amount - feeAmount;
     stmts.push({
-      sql: `INSERT INTO invoice_payments (id, invoice_id, account_id, amount, fee_amount) VALUES (?, ?, ?, ?, ?)`,
-      params: [paymentId, invoiceId, payment.accountId, payment.amount, feeAmount],
+      sql: `INSERT INTO invoice_payments (id, invoice_id, account_id, amount, fee_amount, updated_at, device_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      params: [paymentId, invoiceId, payment.accountId, payment.amount, feeAmount, now, deviceId],
     });
     stmts.push({
-      sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
-      params: [netAmount, payment.accountId],
+      sql: `UPDATE accounts SET balance = balance + ?, updated_at = ? WHERE id = ?`,
+      params: [netAmount, now, payment.accountId],
     });
     stmts.push({
       sql: `INSERT INTO ledger_entries
-              (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at, updated_at, device_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         nanoid(), today, payment.accountId,
         acct?.name ?? null,
         'credit', netAmount, 'invoice', invoiceId,
-        `مبيعات فاتورة رقم ${invoiceNumber}`, now,
+        `مبيعات فاتورة رقم ${invoiceNumber}`, now, now, deviceId,
       ],
     });
   }
@@ -304,6 +310,7 @@ export async function returnInvoice(invoiceId: string, refunds: { accountId: str
   const stmts: { sql: string; params: any[] }[] = [];
   const now = new Date().toISOString();
   const today = format(new Date(), 'yyyy-MM-dd');
+  const deviceId = getDeviceId();
 
   // ملاحظة: واجهة الاسترجاع الحالية تعمل بالمبالغ فقط (accountId, amount)
   // ولا تتتبع كميات البنود لكل استرجاع — استرجاع المخزون يُطبَّق فقط عند الاسترجاع الكامل (FIX 2)
@@ -324,8 +331,8 @@ export async function returnInvoice(invoiceId: string, refunds: { accountId: str
   const returnNote = newStatus === 'returned' ? 'تم الاسترجاع الكامل' : 'تم استرجاع جزئي';
 
   stmts.push({
-    sql: `UPDATE invoices SET status = ?, paid_amount = paid_amount - ?, notes = COALESCE(notes, '') || ? WHERE id = ?`,
-    params: [newStatus, totalRefund, ` | ${returnNote}`, invoiceId],
+    sql: `UPDATE invoices SET status = ?, paid_amount = paid_amount - ?, notes = COALESCE(notes, '') || ?, updated_at = ? WHERE id = ?`,
+    params: [newStatus, totalRefund, ` | ${returnNote}`, now, invoiceId],
   });
 
   // استرجاع المخزون فقط عند الاسترجاع الكامل — في الاسترجاع الجزئي البضاعة لا تزال عند العميل
@@ -346,21 +353,21 @@ export async function returnInvoice(invoiceId: string, refunds: { accountId: str
     const refundFee = applyPercent(refund.amount, (racct?.feePercent ?? 0) / 10);
     const netRefund = refund.amount - refundFee;
     stmts.push({
-      sql: `INSERT INTO invoice_payments (id, invoice_id, account_id, amount, fee_amount) VALUES (?, ?, ?, ?, ?)`,
-      params: [nanoid(), invoiceId, refund.accountId, -refund.amount, refundFee],
+      sql: `INSERT INTO invoice_payments (id, invoice_id, account_id, amount, fee_amount, updated_at, device_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      params: [nanoid(), invoiceId, refund.accountId, -refund.amount, refundFee, now, deviceId],
     });
     stmts.push({
-      sql: `UPDATE accounts SET balance = balance - ? WHERE id = ?`,
-      params: [netRefund, refund.accountId],
+      sql: `UPDATE accounts SET balance = balance - ?, updated_at = ? WHERE id = ?`,
+      params: [netRefund, now, refund.accountId],
     });
     stmts.push({
       sql: `INSERT INTO ledger_entries
-              (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at, updated_at, device_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         nanoid(), today, refund.accountId,
         'debit', netRefund, 'invoice', invoiceId,
-        `استرجاع مبيعات فاتورة رقم ${invoice.invoice_number}`, now,
+        `استرجاع مبيعات فاتورة رقم ${invoice.invoice_number}`, now, now, deviceId,
       ],
     });
   }

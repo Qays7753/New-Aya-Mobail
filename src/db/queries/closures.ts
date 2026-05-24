@@ -2,6 +2,7 @@ import { dbClient } from '../client';
 import { format } from 'date-fns';
 import { nanoid } from 'nanoid';
 import { logAudit } from './audit';
+import { getDeviceId } from '@/lib/device';
 
 export interface DayClosureSnapshot {
   closure_date: string;
@@ -102,6 +103,7 @@ export async function closeDay(
   }
 
   const closedAt = new Date().toISOString();
+  const deviceId = getDeviceId();
   const tx: { sql: string; params: any[] }[] = [];
   const reconciliationDetails: string[] = [];
 
@@ -126,12 +128,12 @@ export async function closeDay(
         tx.push({
           sql: `INSERT INTO ledger_entries
                   (id, entry_date, account_id, account_name, type, amount,
-                   ref_type, ref_id, description, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                   ref_type, ref_id, description, created_at, updated_at, device_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           params: [
             nanoid(), targetDate, cc.accountId, acct.name,
             entryType, Math.abs(diff), 'eod_reconciliation', null,
-            description, closedAt,
+            description, closedAt, closedAt, deviceId,
           ],
         });
         reconciliationDetails.push(
@@ -140,8 +142,8 @@ export async function closeDay(
       }
 
       tx.push({
-        sql: `UPDATE accounts SET balance = ? WHERE id = ?`,
-        params: [cc.actualCash, cc.accountId],
+        sql: `UPDATE accounts SET balance = ?, updated_at = ? WHERE id = ?`,
+        params: [cc.actualCash, closedAt, cc.accountId],
       });
     }
   }
@@ -151,13 +153,13 @@ export async function closeDay(
   tx.push({
     sql: `INSERT INTO day_closures
             (closure_date, closed_at, closed_by, sales_total, cogs_total,
-             discounts_total, gifts_value, returns_total, expenses_total, net_profit, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             discounts_total, gifts_value, returns_total, expenses_total, net_profit, notes, device_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       targetDate, closedAt, null,
       snapshot.sales_total, snapshot.cogs_total, snapshot.discounts_total,
       snapshot.gifts_value, snapshot.returns_total, snapshot.expenses_total,
-      snapshot.net_profit, notes || null,
+      snapshot.net_profit, notes || null, deviceId,
     ],
   });
 
