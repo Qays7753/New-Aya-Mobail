@@ -66,7 +66,16 @@ export async function addExpense(data: {
   account_name: string;
 }) {
   const { amount, category_id, category_name, description, accountId, account_name } = data;
-  
+
+  // التحقق من كفاية الرصيد قبل الخصم
+  const accResult = await dbClient.query('SELECT balance, name FROM accounts WHERE id = ?', [accountId]);
+  if (!accResult.length) throw new Error('الحساب غير موجود');
+  if (accResult[0].balance < amount) {
+    throw new Error(
+      `الرصيد غير كافٍ في ${accResult[0].name} (المتاح: ${accResult[0].balance / 100} د.أ)`
+    );
+  }
+
   const id = nanoid();
   const today = format(new Date(), 'yyyy-MM-dd');
   const now = new Date().toISOString();

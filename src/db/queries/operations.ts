@@ -158,17 +158,31 @@ export async function createTransfer({
   amount: number;
   notes?: string;
 }) {
+  // منع التحويل من حساب لنفسه
+  if (from_account_id === to_account_id) {
+    throw new Error('لا يمكن التحويل من حساب لنفسه');
+  }
+
   const now = new Date();
   const dateStr = format(now, 'yyyy-MM-dd');
   const timestamp = now.toISOString();
 
   let from_account_name: string | null = null;
   let to_account_name: string | null = null;
-  const accountsResult = await dbClient.query("SELECT id, name FROM accounts WHERE id IN (?, ?)", [from_account_id, to_account_id]);
-  accountsResult.forEach(a => {
+  const accountsResult = await dbClient.query("SELECT id, name, balance FROM accounts WHERE id IN (?, ?)", [from_account_id, to_account_id]);
+  accountsResult.forEach((a: any) => {
     if (a.id === from_account_id) from_account_name = a.name;
     if (a.id === to_account_id) to_account_name = a.name;
   });
+
+  // التحقق من كفاية رصيد الحساب المحوَّل منه
+  const fromAccount = accountsResult.find((a: any) => a.id === from_account_id);
+  if (!fromAccount) throw new Error('حساب المصدر غير موجود');
+  if (fromAccount.balance < amount) {
+    throw new Error(
+      `الرصيد غير كافٍ في ${from_account_name} (المتاح: ${fromAccount.balance / 100} د.أ)`
+    );
+  }
 
   let nextVal = 1;
   const seqResult = await dbClient.query("SELECT last_val FROM sequences WHERE name = 'transfer'");

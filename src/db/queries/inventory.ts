@@ -1,11 +1,21 @@
 import { dbClient } from '../client';
 import { format } from 'date-fns';
 import { nanoid } from 'nanoid';
+import { logAudit } from './audit';
 
 export async function createInventoryCount(items: { product_id: string; system_qty: number; actual_qty: number; reason: string }[], notes?: string) {
   const now = new Date();
   const dateStr = format(now, 'yyyy-MM-dd HH:mm:ss');
+  const entryDate = format(now, 'yyyy-MM-dd');
   const countId = nanoid();
+
+  // Pre-fetch cost_price for all products in this count
+  const productIds = items.map(i => i.product_id);
+  const products = await dbClient.query(
+    `SELECT id, cost_price FROM products WHERE id IN (${productIds.map(() => '?').join(',')})`,
+    productIds
+  );
+  const costMap = new Map<string, number>(products.map((p: any) => [p.id, p.cost_price ?? 0]));
 
   const tx: {sql: string, params: any[]}[] = [
     {
@@ -21,14 +31,36 @@ export async function createInventoryCount(items: { product_id: string; system_q
       params: [nanoid(), countId, item.product_id, item.system_qty, item.actual_qty, item.reason || null]
     });
 
-    // Update actual stock
+    // Update actual stock (integer — no toString)
     tx.push({
       sql: `UPDATE products SET stock_qty = ? WHERE id = ?`,
-      params: [item.actual_qty.toString(), item.product_id]
+      params: [item.actual_qty, item.product_id]
     });
+
+    // Ledger entry for any discrepancy
+    const diff = item.actual_qty - item.system_qty;
+    const value = Math.abs(diff) * (costMap.get(item.product_id) || 0);
+    if (diff !== 0 && value > 0) {
+      const entryType = diff < 0 ? 'debit' : 'credit';
+      tx.push({
+        sql: `INSERT INTO ledger_entries
+               (id, entry_date, account_id, account_name, type, amount,
+                ref_type, ref_id, description, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          nanoid(), entryDate, null, null,
+          entryType, value, 'inventory_adjustment', countId,
+          `تعديل مخزون: ${item.product_id} (${diff > 0 ? '+' : ''}${diff} وحدة)`,
+          dateStr
+        ]
+      });
+    }
   }
 
   await dbClient.batchRun(tx);
+
+  await logAudit('جرد_مخزون', `جرد بتاريخ ${dateStr} — ${items.length} بند`, 'inventory_count', countId);
+
   return countId;
 }
 
@@ -70,7 +102,7 @@ export async function createAccountReconciliation(account_id: string, actual_bal
   const tx = [
     {
       sql: `UPDATE accounts SET balance = ? WHERE id = ?`,
-      params: [actual_balance.toString(), account_id]
+      params: [actual_balance, account_id]
     },
     {
       sql: `INSERT INTO ledger_entries (id, entry_date, account_id, type, amount, ref_type, ref_id, description, created_at)

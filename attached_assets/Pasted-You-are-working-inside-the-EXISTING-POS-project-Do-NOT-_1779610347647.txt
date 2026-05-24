@@ -1,0 +1,115 @@
+You are working inside the EXISTING POS project. Do NOT create a new project.
+
+GROUND RULES — same as before. READ before editing. NEVER assume. DO NOT
+touch unrelated code. After each section: tsc clean, then commit.
+
+TASK: Four data-integrity fixes — visible inventory adjustments, prevent
+negative balances, prevent self-transfer, and fix string-where-integer.
+
+═══════════════════════════════════════════════════════════════
+SECTION D1 — Inventory adjustment creates ledger entry  (audit: F1-08)
+═══════════════════════════════════════════════════════════════
+File: src/db/queries/inventory.ts  →  createInventoryCount function.
+
+Current behavior: updates products.stock_qty only. No financial trail for
+the value of stock variance. Theft, breakage, miscounts vanish silently.
+
+Required changes:
+1. Inside the per-item loop, in addition to inserting inventory_count_items
+   and updating stock_qty, fetch the product's cost_price (use the
+   product_id; either pre-fetch all cost_prices in one query before the
+   loop, or query per item). Pre-fetch is preferable for performance:
+
+     const productIds = items.map(i => i.product_id);
+     const products = await dbClient.query(
+       `SELECT id, cost_price FROM products WHERE id IN (${productIds
+        .map(() => '?').join(',')})`,
+       productIds
+     );
+     const costMap = new Map(products.map(p => [p.id, p.cost_price ?? 0]));
+
+2. For each item where `actual_qty !== system_qty`, compute:
+     const diff = item.actual_qty - item.system_qty;          // signed
+     const value = Math.abs(diff) * (costMap.get(item.product_id) || 0);
+     const entryType = diff < 0 ? 'debit' : 'credit'; // loss vs gain
+   Skip if value === 0.
+
+3. Append a ledger entry to the batch tx (account_id = null is acceptable;
+   the schema's ledger_entries.account_id is nullable):
+
+     tx.push({
+       sql: `INSERT INTO ledger_entries
+              (id, entry_date, account_id, account_name, type, amount,
+               ref_type, ref_id, description, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       params: [nanoid(), format(now, 'yyyy-MM-dd'), null, null,
+                entryType, value, 'inventory_adjustment', countId,
+                `تعديل مخزون: ${item.product_id} (${diff > 0 ? '+' : ''}${diff} وحدة)`,
+                dateStr]
+     });
+
+4. After batchRun succeeds, call:
+     await logAudit('جرد_مخزون',
+       `جرد بتاريخ ${dateStr} — ${items.length} بند`, 'inventory_count', countId);
+
+═══════════════════════════════════════════════════════════════
+SECTION D2 — Negative balance guard on expenses + transfers  (audit: F1-10)
+═══════════════════════════════════════════════════════════════
+
+Step D2.1 — src/db/queries/expenses.ts → addExpense
+Before constructing the batch tx, fetch the current balance:
+  const accResult = await dbClient.query(
+    'SELECT balance, name FROM accounts WHERE id = ?', [accountId]);
+  if (!accResult.length) throw new Error('الحساب غير موجود');
+  if (accResult[0].balance < amount) {
+    throw new Error(
+      `الرصيد غير كافٍ في ${accResult[0].name} ` +
+      `(المتاح: ${accResult[0].balance / 100} د.أ)`);
+  }
+
+Step D2.2 — src/db/queries/operations.ts → createTransfer
+Same pattern: before building tx, check from_account balance. If less than
+amount, throw a clear Arabic error.
+
+═══════════════════════════════════════════════════════════════
+SECTION D3 — Same-account guard on transfers  (audit: F1-11)
+═══════════════════════════════════════════════════════════════
+File: src/db/queries/operations.ts → createTransfer (very top of function).
+
+Add immediately on entry:
+  if (from_account_id === to_account_id) {
+    throw new Error('لا يمكن التحويل من حساب لنفسه');
+  }
+
+═══════════════════════════════════════════════════════════════
+SECTION D4 — Remove erroneous .toString() in inventory  (audit: F1-12)
+═══════════════════════════════════════════════════════════════
+File: src/db/queries/inventory.ts
+
+1. createInventoryCount, line ~27 in the UPDATE products statement:
+   change `[item.actual_qty.toString(), item.product_id]`
+   to     `[item.actual_qty, item.product_id]`
+
+2. createAccountReconciliation, the UPDATE accounts statement:
+   change `[actual_balance.toString(), account_id]`
+   to     `[actual_balance, account_id]`
+
+Both fields are INTEGER columns. SQLite tolerates the string today but
+Supabase/Postgres will not.
+
+═══════════════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════════════
+- `npx tsc --noEmit` → 0 errors.
+- Inventory: a count with a discrepancy creates a ledger_entries row with
+  ref_type='inventory_adjustment', visible in Operations ledger view.
+  Audit log has the count entry.
+- Expenses: an attempt to add an expense larger than the account balance
+  is rejected with a clear Arabic error. Account stays unchanged.
+- Transfers: same behavior on insufficient source balance. Attempting to
+  transfer from cash → cash is rejected.
+- inventory.ts no longer calls .toString() on numeric params (grep
+  "toString" in that file returns nothing).
+
+Commit: `fix(integrity): inventory ledger entries + balance guards + same-account guard + numeric params`
+Then `git push origin main`.
