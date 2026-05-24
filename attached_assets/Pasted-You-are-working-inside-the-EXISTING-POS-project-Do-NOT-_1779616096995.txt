@@ -1,0 +1,186 @@
+You are working inside the EXISTING POS project. Do NOT create a new project.
+
+GROUND RULES — same as before. READ before editing. NEVER assume.
+DO NOT touch unrelated code. After each section: tsc clean, commit.
+Push at end.
+
+TASK: Functional UX polish — searchable sales history with receipt
+reprint, native-confirm replacement, helpful empty states, safer
+ForceChange flow, and the missing performance indexes.
+
+═══════════════════════════════════════════════════════════════
+SECTION SB1 — SalesPage: filters + invoice detail + reprint
+═══════════════════════════════════════════════════════════════
+File: src/modules/sales/SalesPage.tsx (and possibly src/db/queries/sales.ts).
+
+Current behavior: search by invoice number only. No date filter, no
+amount filter, no account filter. No way to view an invoice's details
+or reprint its receipt from the history.
+
+SB1.1 — Backend query enhancement
+- In src/db/queries/sales.ts, enhance `getRecentInvoices` (or add
+  `searchInvoices`) to accept optional filters:
+    {
+      from?: string;      // YYYY-MM-DD
+      to?: string;
+      minAmount?: number; // fils
+      maxAmount?: number; // fils
+      invoiceNumber?: string;
+      accountId?: string; // joined via invoice_payments
+      limit?: number;
+    }
+  Build the WHERE clause with bound parameters (no string concatenation
+  of user input). If accountId is provided, JOIN invoice_payments.
+  ORDER BY created_at DESC. LIMIT defaults to 100.
+
+SB1.2 — SalesPage UI filters
+- Replace the single search input with a filter bar:
+  - Invoice number (text input, debounced 300ms)
+  - Date from / to (date inputs)
+  - Amount min / max (number inputs, dinars, parsed via parseMoney)
+  - Account dropdown (loaded from getActiveAccounts)
+- Add a "إعادة ضبط" button to clear filters.
+- Below the filters, render the invoice list as today, but each row is
+  now clickable.
+
+SB1.3 — Invoice detail panel
+- When the user clicks an invoice row, open a slide-in panel from the
+  start side (RTL-aware) showing:
+  - Invoice header (number, date, customer if any, status badge)
+  - Items table (product name, qty, unit price, discount, line total,
+    is_gift indicator)
+  - Payments breakdown (account, amount, fee)
+  - Totals (subtotal, discount, total, paid)
+  - Two action buttons at the bottom:
+    - "إعادة طباعة الإيصال" — opens the existing ReceiptOverlay
+      component with this invoice loaded.
+    - "استرجاع" — opens the existing return dialog (preserve current
+      behavior, including admin PIN gate).
+
+SB1.4 — Receipt reprint hookup
+- The existing src/components/receipt/ReceiptOverlay.tsx renders a
+  receipt for a given invoice. Verify it accepts an invoice id (or
+  full invoice object) and items as props. If not, fetch via
+  getInvoiceWithItems on open.
+- The reprint should NOT create a new invoice, NOT log to audit, NOT
+  affect any data. Pure read + render.
+
+═══════════════════════════════════════════════════════════════
+SECTION SB2 — Replace window.confirm with ConfirmDialog
+═══════════════════════════════════════════════════════════════
+Use the existing src/components/ui/ConfirmDialog.tsx everywhere
+window.confirm is currently used. Search the codebase:
+
+  git grep -n "window\.confirm\|^\s*confirm\(" src/
+
+Likely sites:
+- src/modules/pos/components/CartSidebar.tsx → "مسح السلة"
+- src/modules/products/components/ProductEditor.tsx → deactivate product
+- Any other matches
+
+For each, replace with ConfirmDialog (managed via local state
+isConfirmOpen + onConfirm + onCancel). Use clear Arabic title and
+description. The destructive button styled as danger (red).
+
+═══════════════════════════════════════════════════════════════
+SECTION SB3 — Empty-state guidance
+═══════════════════════════════════════════════════════════════
+For each of these screens, the empty state should TELL the user what to
+do, not just say "no data."
+
+SB3.1 — ProductGrid (POS)
+- File: src/modules/pos/components/ProductGrid.tsx
+- Current: "لا توجد منتجات مطابقة" or similar.
+- Enhanced: if there are NO products at all in the DB (not just no
+  matches), show: "لا توجد منتجات بعد. أضِف منتجاتك من صفحة المنتجات."
+  with a button "اذهب إلى المنتجات" that navigates to /products.
+- If there are products but the filter returns none, keep the existing
+  short message with a "إعادة ضبط الفلاتر" button.
+
+SB3.2 — Cart empty state (CartSidebar)
+- Friendly message: "السلة فارغة. اضغط على المنتجات لإضافتها." with a
+  small icon. Already approximately exists — verify and enhance if
+  needed.
+
+SB3.3 — SalesPage empty
+- If no invoices yet: "لا توجد فواتير بعد. ستظهر مبيعاتك هنا."
+- If filters return none: "لا توجد نتائج مطابقة. عدِّل الفلاتر."
+
+SB3.4 — Reports empty (each tab)
+- If the period has no data: "لا توجد بيانات لهذه الفترة."
+
+SB3.5 — Expenses empty
+- "لا توجد مصاريف بعد. أضِف أول مصروف بالضغط على زر +."
+
+═══════════════════════════════════════════════════════════════
+SECTION SB4 — ForceChangeDefaultsScreen: safer PIN setting
+═══════════════════════════════════════════════════════════════
+File: src/components/auth/ForceChangeDefaultsScreen.tsx
+
+Current behavior: auto-submits when the PIN reaches 4 digits via a
+useEffect. A typo on the 4th digit is immediately committed.
+
+Required changes:
+1. Remove the useEffect that auto-submits at length === 4.
+2. Add an explicit "تأكيد" button (disabled while length !== 4).
+3. Add a small "إظهار الأرقام" / "إخفاء" toggle (eye icon) that flips
+   between password-style dots and visible digits. Default: hidden
+   (dots).
+4. After the daily PIN is set, the same flow repeats for the admin PIN
+   — apply the same protections.
+5. Show a brief confirmation step (read-only display of the entered
+   PIN + "تأكيد") before persisting.
+
+═══════════════════════════════════════════════════════════════
+SECTION SB5 — Migration 011: restore missing performance indexes
+═══════════════════════════════════════════════════════════════
+- Create src/db/migrations/011_indexes.sql (or the next available
+  number — verify the current list). Register it in migrations/index.ts.
+- Migration 003 rebuilt tables and dropped indexes that the app
+  benefits from. Recreate them:
+
+  PRAGMA user_version = 11;
+
+  CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice
+    ON invoice_items(invoice_id);
+  CREATE INDEX IF NOT EXISTS idx_invoice_items_product
+    ON invoice_items(product_id);
+  CREATE INDEX IF NOT EXISTS idx_invoices_date
+    ON invoices(invoice_date);
+  CREATE INDEX IF NOT EXISTS idx_invoices_status
+    ON invoices(status);
+  CREATE INDEX IF NOT EXISTS idx_invoices_customer
+    ON invoices(customer_id);
+  CREATE INDEX IF NOT EXISTS idx_expenses_date
+    ON expenses(expense_date);
+  CREATE INDEX IF NOT EXISTS idx_ledger_account
+    ON ledger_entries(account_id);
+  CREATE INDEX IF NOT EXISTS idx_ledger_date
+    ON ledger_entries(entry_date);
+
+- Use `IF NOT EXISTS` everywhere so the migration is safe on databases
+  where some indexes already exist.
+
+═══════════════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════════════
+- `npx tsc --noEmit` → 0 errors.
+- Migration 011 applies cleanly on a DB at version 10.
+- SalesPage: searching by date range, amount range, account, and
+  invoice number all work. Clicking an invoice opens a detail panel
+  with reprint button that renders the receipt (read-only).
+- No `window.confirm` remains in src/ (verify by grep). All replaced
+  with ConfirmDialog.
+- Empty states across POS, Cart, Sales, Reports, Expenses guide the
+  user with a clear next action where applicable.
+- ForceChangeDefaultsScreen requires an explicit Confirm button click;
+  has a show/hide PIN toggle; presents a brief confirmation step.
+
+Commit (5 commits recommended):
+  feat(sales): filterable history with invoice detail and receipt reprint
+  fix(ux): replace window.confirm with in-app ConfirmDialog
+  feat(ux): guided empty states across modules
+  fix(auth): explicit confirm + show-PIN toggle on ForceChange screen
+  perf(db): migration 011 restores missing indexes
+
+Then `git push origin main`.

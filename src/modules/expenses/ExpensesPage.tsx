@@ -277,7 +277,13 @@ export default function ExpensesPage() {
             {isLoading ? (
               <div className="p-8 flex justify-center"><div className="animate-spin w-8 h-8 border-4 border-accent/30 border-t-accent rounded-full"></div></div>
             ) : expenses.length === 0 ? (
-              <div className="p-8 text-center text-text-secondary">لا توجد مصروفات مسجلة بعد.</div>
+              <div className="p-10 flex flex-col items-center gap-3 text-text-secondary text-center">
+                <Receipt className="w-10 h-10 opacity-25" />
+                <div>
+                  <p className="font-semibold text-text-primary" style={{ fontFamily: 'Tajawal, sans-serif' }}>لا توجد مصروفات بعد</p>
+                  <p className="text-sm mt-1" style={{ fontFamily: 'Tajawal, sans-serif' }}>أضِف أول مصروف بالضغط على زر "تسجيل مصروف"</p>
+                </div>
+              </div>
             ) : (
               <div className="divide-y divide-border">
                 {expenses.map(expense => {

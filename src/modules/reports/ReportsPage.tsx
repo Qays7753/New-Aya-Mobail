@@ -332,6 +332,16 @@ export default function ReportsPage() {
               {/* ── Tab content ── */}
               {activeTab === 'overview' && (
                 <div className="space-y-5 animate-in fade-in">
+                  {kpi!.invoiceCount === 0 ? (
+                    <div className="text-center py-16 flex flex-col items-center gap-4 text-text-secondary bg-surface border border-border rounded-2xl">
+                      <BarChart3 className="w-14 h-14 opacity-20" />
+                      <div>
+                        <p className="font-semibold text-text-primary text-base" style={{ fontFamily: 'Tajawal, sans-serif' }}>لا توجد بيانات لهذه الفترة</p>
+                        <p className="text-sm mt-1" style={{ fontFamily: 'Tajawal, sans-serif' }}>لم يتم تسجيل أي مبيعات خلال هذه الفترة الزمنية</p>
+                      </div>
+                    </div>
+                  ) : (
+                  <>
                   <div className="bg-surface border border-border rounded-2xl p-5">
                     <h3 className="font-bold text-base mb-4" style={{ fontFamily: 'Tajawal, sans-serif' }}>
                       مبيعات، تكلفة ومصاريف يومية
@@ -368,6 +378,8 @@ export default function ReportsPage() {
                         </table>
                       </div>
                     </div>
+                  )}
+                  </>
                   )}
                 </div>
               )}

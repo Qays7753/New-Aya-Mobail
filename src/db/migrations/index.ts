@@ -19,6 +19,8 @@ import giftItemsSql from './008_gift_items.sql?raw';
 import partialReturnsSql from './009_partial_returns.sql?raw';
 // @ts-ignore
 import dayClosuresSql from './010_day_closures.sql?raw';
+// @ts-ignore
+import indexesSql from './011_indexes.sql?raw';
 
 const migrations = [
   { version: 1, sql: initSql },
@@ -31,6 +33,7 @@ const migrations = [
   { version: 8, sql: giftItemsSql },
   { version: 9, sql: partialReturnsSql },
   { version: 10, sql: dayClosuresSql },
+  { version: 11, sql: indexesSql },
 ];
 
 export async function runMigrations() {

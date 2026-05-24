@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, PackageSearch, LayoutGrid } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getActiveProducts, Product } from '@/db/queries/products';
 import { getCategories } from '@/db/queries/categories';
@@ -96,6 +97,7 @@ export function ProductGrid() {
     overscan: 5,
   });
 
+  const navigate     = useNavigate();
   const clearFilters = useCallback(() => { setSearch(''); setCategory('all'); }, []);
   const hasFilters   = search !== '' || category !== 'all';
 
@@ -222,6 +224,15 @@ export function ProductGrid() {
                 style={{ fontFamily: 'Tajawal, sans-serif' }}
               >
                 مسح التصفية
+              </button>
+            )}
+            {!hasFilters && (
+              <button
+                onClick={() => navigate('/products')}
+                className="mt-1 px-4 py-2 bg-accent text-white rounded-lg text-sm font-bold hover:bg-accent-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                style={{ fontFamily: 'Tajawal, sans-serif' }}
+              >
+                اذهب إلى المنتجات
               </button>
             )}
           </div>

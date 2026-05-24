@@ -388,9 +388,10 @@ export function CartSidebar() {
         {/* ── Items list ── */}
         <div className="flex-1 overflow-y-auto flex flex-col gap-2 p-2">
           {items.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-text-secondary py-10">
-              <ShoppingCartIcon className="w-12 h-12 mb-2 opacity-40" />
-              <p style={{ fontFamily: 'Tajawal, sans-serif', fontSize: '14px' }}>السلة فارغة</p>
+            <div className="flex-1 flex flex-col items-center justify-center text-text-secondary py-10 text-center px-4">
+              <ShoppingCartIcon className="w-12 h-12 mb-3 opacity-25" />
+              <p className="font-semibold text-text-primary" style={{ fontFamily: 'Tajawal, sans-serif', fontSize: '15px' }}>السلة فارغة</p>
+              <p className="text-xs mt-1" style={{ fontFamily: 'Tajawal, sans-serif' }}>اضغط على أي منتج لإضافته إلى السلة</p>
             </div>
           ) : (
             items.map(item => {

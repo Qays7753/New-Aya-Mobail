@@ -1,32 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { hashCode } from '@/lib/auth';
 import { set } from 'idb-keyval';
-import { Shield, Key } from 'lucide-react';
+import { Shield, Key, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { NumPad } from '@/components/ui/NumPad';
 
 export function ForceChangeDefaultsScreen() {
   const { recheckDefaults } = useAuth();
-  const [step, setStep] = useState<1 | 2>(1); // 1 = daily, 2 = admin
+  const [step, setStep] = useState<1 | 2>(1);
   const [newCode, setNewCode] = useState('');
   const [confirmCode, setConfirmCode] = useState('');
   const [error, setError] = useState('');
   const [isConfirming, setIsConfirming] = useState(false);
+  const [showPin, setShowPin] = useState(false);
 
-  useEffect(() => {
-    if (newCode.length === 4 && !isConfirming) {
-      handleNext();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newCode]);
-
-  useEffect(() => {
-    if (confirmCode.length === 4 && isConfirming) {
-      handleNext();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmCode]);
+  const activeCode = !isConfirming ? newCode : confirmCode;
 
   const handleNumber = (num: string) => {
     setError('');
@@ -57,6 +46,7 @@ export function ForceChangeDefaultsScreen() {
         return;
       }
       setIsConfirming(true);
+      setShowPin(false);
       return;
     }
 
@@ -68,10 +58,8 @@ export function ForceChangeDefaultsScreen() {
       return;
     }
 
-    // Save
     try {
       if (step === 1) {
-        // daily lock: force save
         const codeData = await hashCode(newCode);
         await set('daily_lock', codeData);
         setStep(2);
@@ -91,6 +79,7 @@ export function ForceChangeDefaultsScreen() {
     setConfirmCode('');
     setIsConfirming(false);
     setError('');
+    setShowPin(false);
   };
 
   return (
@@ -123,20 +112,32 @@ export function ForceChangeDefaultsScreen() {
             </p>
           </div>
 
-          <div className="flex justify-center gap-4">
-            {[0, 1, 2, 3].map(i => (
-              <div 
-                key={i} 
-                className={cn(
-                  "w-12 h-14 rounded-xl border-2 flex items-center justify-center text-3xl font-bold transition-all",
-                  (!isConfirming ? newCode.length : confirmCode.length) > i 
-                    ? "border-accent bg-accent text-white scale-110 shadow-lg shadow-accent/20" 
-                    : "border-border bg-muted text-transparent"
-                )}
+          <div className="space-y-3">
+            <div className="flex justify-center gap-4">
+              {[0, 1, 2, 3].map(i => (
+                <div
+                  key={i}
+                  className={cn(
+                    "w-12 h-14 rounded-xl border-2 flex items-center justify-center text-3xl font-bold transition-all",
+                    activeCode.length > i
+                      ? "border-accent bg-accent text-white scale-110 shadow-lg shadow-accent/20"
+                      : "border-border bg-muted text-transparent"
+                  )}
+                >
+                  {activeCode.length > i && showPin ? activeCode[i] : '•'}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShowPin(v => !v)}
+                className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-accent transition-colors py-1 px-2 rounded-lg"
               >
-                •
-              </div>
-            ))}
+                {showPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {showPin ? 'إخفاء الأرقام' : 'إظهار الأرقام'}
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -147,7 +148,7 @@ export function ForceChangeDefaultsScreen() {
             onDigit={(num) => handleNumber(num)}
             onClear={handleDelete}
             onSubmit={handleNext}
-            submitDisabled={(!isConfirming ? newCode.length : confirmCode.length) !== 4}
+            submitDisabled={activeCode.length !== 4}
           />
         </div>
       </div>

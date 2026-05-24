@@ -218,8 +218,19 @@ export async function getInvoiceWithItems(invoiceId: string) {
   const invoices = await dbClient.query(`SELECT * FROM invoices WHERE id = ?`, [invoiceId]);
   if (!invoices.length) return null;
   const invoice = invoices[0];
-  const items = await dbClient.query(`SELECT * FROM invoice_items WHERE invoice_id = ?`, [invoiceId]);
-  return { ...invoice, items };
+  const items = await dbClient.query(
+    `SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY rowid`,
+    [invoiceId]
+  );
+  const payments = await dbClient.query(
+    `SELECT ip.*, a.name as account_name
+     FROM invoice_payments ip
+     LEFT JOIN accounts a ON a.id = ip.account_id
+     WHERE ip.invoice_id = ?
+     ORDER BY ip.rowid`,
+    [invoiceId]
+  );
+  return { ...invoice, items, payments };
 }
 
 export async function getRecentInvoices(limit = 100) {
@@ -227,6 +238,47 @@ export async function getRecentInvoices(limit = 100) {
     `SELECT * FROM invoices ORDER BY created_at DESC LIMIT ?`,
     [limit]
   );
+}
+
+export async function searchInvoices(filters: {
+  invoiceNumber?: string;
+  from?: string;
+  to?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  accountId?: string;
+  limit?: number;
+}) {
+  const { invoiceNumber, from, to, minAmount, maxAmount, accountId, limit = 100 } = filters;
+
+  const conds: string[] = [];
+  const cParams: any[] = [];
+
+  if (from)                    { conds.push('i.invoice_date >= ?');    cParams.push(from); }
+  if (to)                      { conds.push('i.invoice_date <= ?');    cParams.push(to); }
+  if (minAmount !== undefined)  { conds.push('i.total_amount >= ?');   cParams.push(minAmount); }
+  if (maxAmount !== undefined)  { conds.push('i.total_amount <= ?');   cParams.push(maxAmount); }
+  if (invoiceNumber)            { conds.push('i.invoice_number LIKE ?'); cParams.push(`%${invoiceNumber}%`); }
+
+  const params: any[] = [];
+  let sql: string;
+
+  if (accountId) {
+    sql = `SELECT DISTINCT i.* FROM invoices i
+           INNER JOIN invoice_payments ip ON ip.invoice_id = i.id
+           WHERE ip.account_id = ?`;
+    params.push(accountId);
+    if (conds.length) sql += ' AND ' + conds.join(' AND ');
+  } else {
+    sql = `SELECT i.* FROM invoices i`;
+    if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
+  }
+
+  params.push(...cParams);
+  sql += ' ORDER BY i.created_at DESC LIMIT ?';
+  params.push(limit);
+
+  return dbClient.query(sql, params);
 }
 
 export async function returnInvoice(invoiceId: string, refunds: { accountId: string; amount: number }[]) {
