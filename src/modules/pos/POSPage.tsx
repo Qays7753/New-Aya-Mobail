@@ -61,7 +61,7 @@ export default function POSPage() {
         <button
           onClick={() => setShowMobileCart(true)}
           className={cn(
-            "md:hidden absolute bottom-[calc(env(safe-area-inset-bottom)+1rem)] start-1/2 -translate-x-1/2 bg-text-primary text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 font-bold z-20 animate-in slide-in-from-bottom transition-transform",
+            "md:hidden absolute bottom-[calc(env(safe-area-inset-bottom)+1rem)] start-0 end-0 mx-auto w-fit bg-text-primary text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3 font-bold z-20 animate-in slide-in-from-bottom transition-transform",
             pulse && "scale-110"
           )}
           style={{ touchAction: 'manipulation' }}

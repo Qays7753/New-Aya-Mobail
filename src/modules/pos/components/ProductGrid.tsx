@@ -371,7 +371,7 @@ function ProductCard({
         {floatPluses.map(fp => (
           <span key={fp.id} aria-hidden="true"
             className="absolute z-10 text-[#CF694A] font-bold text-base pointer-events-none animate-float-up"
-            style={{ left: fp.x, top: fp.y, fontFamily: 'Inter' }}
+            style={{ insetInlineStart: fp.x, top: fp.y, fontFamily: 'Inter' }}
           >+1</span>
         ))}
         <div className="flex flex-col items-center justify-between h-full px-1 py-1.5 gap-1">
@@ -408,7 +408,7 @@ function ProductCard({
         {floatPluses.map(fp => (
           <span key={fp.id} aria-hidden="true"
             className="absolute z-10 text-[#CF694A] font-bold text-lg pointer-events-none animate-float-up"
-            style={{ left: fp.x, top: fp.y, fontFamily: 'Inter' }}
+            style={{ insetInlineStart: fp.x, top: fp.y, fontFamily: 'Inter' }}
           >+1</span>
         ))}
         {/* Icon area ~52px */}

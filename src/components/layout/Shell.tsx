@@ -71,7 +71,7 @@ export function Shell() {
           </ErrorBoundary>
         </main>
       </div>
-      {!isPOS && <BottomNav className="md:hidden" />}
+      <BottomNav className="md:hidden" />
       <PWABadge />
 
       {/* ── Admin session indicator badge — visible on every route ── */}

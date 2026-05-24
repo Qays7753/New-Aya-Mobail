@@ -1,0 +1,171 @@
+You are working inside the EXISTING POS project. Do NOT create a new project.
+
+GROUND RULES — same as before. READ before editing. NEVER assume. DO NOT
+touch unrelated code. RTL: logical CSS only (ms-/me-/ps-/pe-/start-/end-).
+After each section: `npx tsc --noEmit` clean, commit. Push at end.
+
+TASK: Critical accessibility and mobile-usability fixes. The cashier on
+a phone must be able to escape POS; touch targets must hit the 44×44
+minimum; modals must be properly accessible; RTL bugs must be corrected.
+
+═══════════════════════════════════════════════════════════════
+SECTION SA1 — Restore mobile navigation on POS  (audit F3-01)
+═══════════════════════════════════════════════════════════════
+File: src/components/layout/Shell.tsx
+
+Current behavior: when `isPOS` is true, TopBar, SideRail, AND BottomNav
+are all hidden. The exit button in POSPage is `hidden lg:flex` — so on a
+phone (<lg), the cashier has NO visible way out of POS.
+
+Required change in Shell.tsx:
+- Continue to hide TopBar/SideRail in POS (tablet experience unchanged).
+- BUT render BottomNav on POS WHEN the viewport is below `md` (phone):
+    {(!isPOS || isMobile) && <BottomNav className="md:hidden" />}
+  where `isMobile` is true when window width is below the md breakpoint.
+  The simplest reliable approach: always render BottomNav with
+  `className="md:hidden"` regardless of isPOS. The Tailwind class itself
+  hides it on md+, so tablet behavior is unchanged. Verify the existing
+  `className="md:hidden"` on BottomNav still applies.
+- Net effect: BottomNav appears on phone in POS, hidden on tablet/desktop
+  in POS.
+
+═══════════════════════════════════════════════════════════════
+SECTION SA2 — Touch targets ≥ 44×44 px  (audit F3-02)
+═══════════════════════════════════════════════════════════════
+The minimum tap target for a tablet POS is 44×44px. Several controls
+are smaller today.
+
+SA2.1 — CartSidebar +/- and trash buttons
+- File: src/modules/pos/components/CartSidebar.tsx
+- Locate the `<Minus className="w-3 h-3" />` and `<Plus />` buttons
+  (around lines 444-460) and the line-level trash (line 425).
+- Wrap each in a button with `className="w-11 h-11 ..."` (44px). Keep
+  the icon sizes as they are; the container is what matters.
+- The "remove global discount" tiny X (around line 573 of pre-Phase-2,
+  may have moved) — locate and enlarge to ≥36×36 minimum (acceptable
+  as a tertiary action; 44 ideal).
+
+SA2.2 — Maintenance status buttons
+- File: src/modules/maintenance/MaintenancePage.tsx
+- The action buttons (start/finish/deliver/cancel) in the job card.
+  Each must be ≥44px tall (currently ~24-28). Use `h-11` minimum.
+
+SA2.3 — Shared Dialog X close button
+- File: src/components/ui/Dialog.tsx
+- The X button uses `p-2` + `w-5 h-5` icon ≈ 36px. Increase the button
+  to `w-11 h-11` minimum (keep icon at w-5 h-5).
+
+For all touch-target fixes:
+- Use logical CSS only.
+- Do not change visual styling beyond the size.
+- Verify no overlap with adjacent elements after enlarging.
+
+═══════════════════════════════════════════════════════════════
+SECTION SA3 — Dialogs: focus trap + ARIA  (audit F3-03)
+═══════════════════════════════════════════════════════════════
+File: src/components/ui/Dialog.tsx and other dialog components.
+
+The shared Dialog component already uses `useEscKey` and backdrop click
+to close, but lacks ARIA attributes and focus trap. Tab escapes to the
+background; screen readers cannot announce "in a dialog."
+
+SA3.1 — Shared Dialog.tsx
+- Wrap the dialog root with `role="dialog"` and `aria-modal="true"`.
+- Apply the existing `useFocusTrap` hook (already in the project at
+  src/hooks/useFocusTrap.ts) to the dialog container ref.
+- Add an `aria-labelledby` pointing to the title heading id (assign an
+  id like `dialog-title-{nanoid}` or use a deterministic prefix).
+
+SA3.2 — Other dialogs missing focus trap
+Apply `useFocusTrap` + role/aria to:
+- src/modules/pos/components/CartSidebar.tsx → GlobalDiscountAmountDialog
+- src/modules/sales/SalesPage.tsx → return dialog (locate by searching
+  for return/refund dialog markup)
+- src/modules/maintenance/MaintenancePage.tsx → add-job dialog and
+  delivery dialog
+- src/modules/expenses/components/ExpenseCategoriesDialog.tsx
+
+For each: identify the dialog root div, attach a ref, call useFocusTrap
+on it when the dialog is open, add role="dialog" and aria-modal="true".
+
+Leave AdminPinDialog, PaymentDialog, ActionDialog (NumPad) as-is if they
+already have focus trap. Verify before editing.
+
+═══════════════════════════════════════════════════════════════
+SECTION SA4 — Mobile cart bottom-sheet safe-area  (audit F3-related)
+═══════════════════════════════════════════════════════════════
+File: src/modules/pos/POSPage.tsx — the mobile cart overlay (the
+full-screen popup version).
+
+Required changes:
+- Apply `pb-[env(safe-area-inset-bottom)]` to the bottom action area
+  inside the overlay so primary buttons sit above iOS home indicator.
+- Verify the cart FAB (when overlay is closed) also respects
+  `bottom-[calc(env(safe-area-inset-bottom)+1rem)]`.
+- The FAB currently uses `-translate-x-1/2` which is physical. Use
+  logical positioning: `start-1/2 -translate-x-1/2` is acceptable since
+  the translate is symmetric and starts after `start-1/2` calc — verify
+  it actually centers correctly in RTL. If not, switch to a wrapper
+  with `inset-inline: 0; margin-inline: auto; width: fit-content`.
+
+═══════════════════════════════════════════════════════════════
+SECTION SA5 — ProductEditor toggle RTL direction  (audit F3-05)
+═══════════════════════════════════════════════════════════════
+File: src/modules/products/components/ProductEditor.tsx, lines 267 and
+307 (approximately).
+
+Current code uses `after:-translate-x-full` on the toggle knob — this
+moves the knob in the wrong direction in RTL.
+
+Required change: replace the toggle styling so the knob movement is
+direction-correct in RTL. Two approaches:
+
+Option A (preferred — pure CSS):
+- Use logical equivalents. In Tailwind 4, use `after:-translate-x-full`
+  inside an RTL-aware utility, or define a custom class. Simplest fix:
+  set the toggle container to `dir="ltr"` (forcing LTR locally for the
+  toggle widget — common pattern for left-to-right switches in RTL UIs).
+
+Option B (component-level):
+- Add a conditional: `after:${isRTL ? 'translate-x-full' : '-translate-x-full'}`
+  where isRTL = document.dir === 'rtl' (compute once).
+
+Pick whichever fits the project's pattern. Verify visually after the fix
+that the knob moves to the correct side when checked.
+
+═══════════════════════════════════════════════════════════════
+SECTION SA6 — ProductGrid +1 float animation: logical positioning
+═══════════════════════════════════════════════════════════════
+File: src/modules/pos/components/ProductGrid.tsx, around lines 372-376
+(the floating "+1" indicator on add-to-cart).
+
+Currently uses physical `left`/`top` style properties.
+
+Required change: replace `left` with `insetInlineStart` (or use
+Tailwind logical class `start-` if applicable). `top` is fine
+(direction-agnostic).
+
+═══════════════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════════════
+- `npx tsc --noEmit` → 0 errors.
+- On phone width (390×844), POS shows BottomNav. Tapping a nav item
+  leaves POS. Tablet/desktop POS unchanged (no BottomNav in POS).
+- All cart +/- and trash buttons measure ≥44×44 in DevTools inspector.
+- All listed maintenance status buttons measure ≥44×44.
+- Dialog X close button measures ≥44×44.
+- Dialog has role="dialog" aria-modal="true" and focus is trapped
+  inside; Tab key cycles only through dialog elements.
+- Mobile cart bottom-sheet bottom controls are not obscured by iOS
+  home indicator.
+- ProductEditor toggle knob moves to the correct side in RTL.
+- "+1" animation on add-to-cart appears in the correct horizontal
+  position in RTL.
+
+Commit (4 commits):
+  fix(mobile): restore BottomNav on POS for phone
+  fix(a11y): touch targets ≥44px on cart, maintenance, and dialog close
+  fix(a11y): focus trap + role + aria-modal on dialogs
+  fix(rtl): product editor toggle direction + grid +1 animation + bottom-sheet safe-area
+
+Then `git push origin main`.

@@ -245,6 +245,8 @@ function GlobalDiscountAmountDialog({
     onClose();
   };
 
+  const trapRef = useFocusTrap(true);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end lg:items-center justify-center"
@@ -252,15 +254,19 @@ function GlobalDiscountAmountDialog({
       onClick={onClose}
     >
       <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gd-dialog-title"
         className="bg-surface rounded-t-2xl lg:rounded-2xl w-full max-w-sm p-5 shadow-2xl"
         onClick={e => e.stopPropagation()}
         dir="rtl"
       >
         <div className="flex items-center justify-between mb-3">
-          <span style={{ fontFamily: 'Tajawal, sans-serif', fontSize: '16px', fontWeight: 700 }}>
+          <span id="gd-dialog-title" style={{ fontFamily: 'Tajawal, sans-serif', fontSize: '16px', fontWeight: 700 }}>
             خصم على الفاتورة كاملة
           </span>
-          <button onClick={onClose} className="p-1.5 hover:bg-muted rounded-full">
+          <button onClick={onClose} className="w-11 h-11 flex items-center justify-center hover:bg-muted rounded-full" aria-label="إغلاق">
             <X className="w-5 h-5 text-text-secondary" />
           </button>
         </div>
@@ -426,7 +432,7 @@ export function CartSidebar() {
                   {/* Delete button — top-end */}
                   <button
                     onClick={e => { e.stopPropagation(); handleDelete(item); }}
-                    style={{ position: 'absolute', top: '6px', insetInlineEnd: '6px', width: '24px', height: '24px', touchAction: 'manipulation' }}
+                    style={{ position: 'absolute', top: '0', insetInlineEnd: '0', width: '44px', height: '44px', touchAction: 'manipulation' }}
                     className="rounded-full flex items-center justify-center text-text-secondary hover:text-danger hover:bg-danger/10 transition-colors"
                     aria-label="حذف"
                   >
@@ -443,7 +449,7 @@ export function CartSidebar() {
                     <div className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
                       <button
                         onClick={() => { if (item.quantity <= 1) handleDelete(item); else updateQuantity(item.cartItemId, item.quantity - 1); }}
-                        style={{ width: '24px', height: '24px', touchAction: 'manipulation' }}
+                        style={{ width: '44px', height: '44px', touchAction: 'manipulation' }}
                         className="rounded-full flex items-center justify-center bg-surface border border-border text-text-secondary hover:bg-muted"
                         aria-label="تقليل الكمية"
                       >
@@ -454,7 +460,7 @@ export function CartSidebar() {
                       </span>
                       <button
                         onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)}
-                        style={{ width: '24px', height: '24px', touchAction: 'manipulation' }}
+                        style={{ width: '44px', height: '44px', touchAction: 'manipulation' }}
                         className="rounded-full flex items-center justify-center bg-surface border border-border text-text-secondary hover:bg-muted"
                         aria-label="زيادة الكمية"
                       >
@@ -571,9 +577,10 @@ export function CartSidebar() {
                     {formatMoney(currentGlobalDiscountFils)}
                     <button
                       onClick={() => setGlobalDiscount('amount', 0)}
-                      className="hover:opacity-70 transition-opacity ms-0.5"
+                      className="w-9 h-9 flex items-center justify-center hover:opacity-70 transition-opacity"
                       style={{ touchAction: 'manipulation' }}
                       title="إلغاء خصم الفاتورة"
+                      aria-label="إلغاء خصم الفاتورة"
                     >
                       <X className="w-2.5 h-2.5" />
                     </button>

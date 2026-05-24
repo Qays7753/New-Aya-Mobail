@@ -8,6 +8,7 @@ import { formatMoney, parseMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useEscKey } from '@/hooks/useEscKey';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 const STATUS_MAP = {
   new: { label: 'قيد الاستلام', color: 'bg-muted text-text-secondary' },
@@ -34,6 +35,9 @@ export default function MaintenancePage() {
     if (deliveryJobId) setDeliveryJobId(null);
     else if (isAddMode) setIsAddMode(false);
   }, !!(deliveryJobId || isAddMode));
+
+  const addJobTrapRef = useFocusTrap(isAddMode);
+  const deliveryTrapRef = useFocusTrap(!!deliveryJobId);
   
   const [formData, setFormData] = useState({
     job_date: new Date().toISOString().split('T')[0],
@@ -194,7 +198,7 @@ export default function MaintenancePage() {
                       {job.status === 'new' && (
                         <button 
                           onClick={() => updateStatusMutation.mutate({ id: job.id, status: 'in_progress' })}
-                          className="px-3 py-1.5 bg-warning-bg text-warning rounded-lg font-bold text-xs"
+                          className="px-3 h-11 bg-warning-bg text-warning rounded-lg font-bold text-xs flex items-center"
                         >
                           البدء بالعمل
                         </button>
@@ -202,7 +206,7 @@ export default function MaintenancePage() {
                       {job.status === 'in_progress' && (
                         <button 
                           onClick={() => updateStatusMutation.mutate({ id: job.id, status: 'ready' })}
-                          className="px-3 py-1.5 bg-success-bg text-success rounded-lg font-bold text-xs flex items-center gap-1"
+                          className="px-3 h-11 bg-success-bg text-success rounded-lg font-bold text-xs flex items-center gap-1"
                         >
                           <CheckCircle className="w-3 h-3" /> تم الإنجاز
                         </button>
@@ -213,7 +217,7 @@ export default function MaintenancePage() {
                               setDeliveryJobId(job.id);
                               setFinalAmount(job.estimated_cost ? (job.estimated_cost).toString() : '');
                           }}
-                          className="px-3 py-1.5 bg-accent text-white rounded-lg font-bold text-xs flex items-center gap-1"
+                          className="px-3 h-11 bg-accent text-white rounded-lg font-bold text-xs flex items-center gap-1"
                         >
                           <PackageCheck className="w-3 h-3" /> تسليم للعميل
                         </button>
@@ -224,7 +228,7 @@ export default function MaintenancePage() {
                              updateStatusMutation.mutate({ id: job.id, status: 'cancelled' });
                           });
                         }}
-                        className="px-3 py-1.5 bg-danger/10 text-danger rounded-lg font-bold text-xs flex items-center gap-1"
+                        className="px-3 h-11 bg-danger/10 text-danger rounded-lg font-bold text-xs flex items-center gap-1"
                       >
                         إلغاء
                       </button>
@@ -243,10 +247,10 @@ export default function MaintenancePage() {
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in"
             onClick={(e) => { if (e.target === e.currentTarget) setDeliveryJobId(null); }}
           >
-            <div className="bg-surface w-full max-w-sm rounded-2xl shadow-xl flex flex-col overflow-hidden">
+            <div ref={deliveryTrapRef} role="dialog" aria-modal="true" aria-labelledby="delivery-dialog-title" className="bg-surface w-full max-w-sm rounded-2xl shadow-xl flex flex-col overflow-hidden">
                 <div className="flex justify-between items-center p-4 border-b border-border bg-muted/30">
-                    <h2 className="text-xl font-bold">تسليم الجهاز</h2>
-                    <button onClick={() => setDeliveryJobId(null)} className="p-2 hover:bg-muted rounded-full text-text-secondary hover:text-text-primary">
+                    <h2 id="delivery-dialog-title" className="text-xl font-bold">تسليم الجهاز</h2>
+                    <button onClick={() => setDeliveryJobId(null)} className="w-11 h-11 flex items-center justify-center hover:bg-muted rounded-full text-text-secondary hover:text-text-primary" aria-label="إغلاق">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
@@ -297,10 +301,10 @@ export default function MaintenancePage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in"
           onClick={(e) => { if (e.target === e.currentTarget) setIsAddMode(false); }}
         >
-          <div className="bg-surface w-full max-w-lg rounded-2xl p-6 shadow-xl flex flex-col max-h-[90vh]">
+          <div ref={addJobTrapRef} role="dialog" aria-modal="true" aria-labelledby="add-job-title" className="bg-surface w-full max-w-lg rounded-2xl p-6 shadow-xl flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center mb-6 shrink-0">
-              <h2 className="text-xl font-bold">استلام جهاز جديد للصيانة</h2>
-              <button onClick={() => setIsAddMode(false)} className="p-2 hover:bg-muted rounded-full">
+              <h2 id="add-job-title" className="text-xl font-bold">استلام جهاز جديد للصيانة</h2>
+              <button onClick={() => setIsAddMode(false)} className="w-11 h-11 flex items-center justify-center hover:bg-muted rounded-full" aria-label="إغلاق">
                 <X className="w-5 h-5" />
               </button>
             </div>

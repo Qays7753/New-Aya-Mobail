@@ -257,7 +257,7 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
                 <h4 className="font-medium">تتبع المخزون</h4>
                 <p className="text-secondary text-xs">هل يجب حساب كمية هذا الصنف وتنبيهك؟</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className="relative inline-flex items-center cursor-pointer" dir="ltr">
                 <input 
                   type="checkbox" 
                   className="sr-only peer" 
@@ -297,7 +297,7 @@ export function ProductEditor({ product, isOpen, onClose }: ProductEditorProps) 
               <h4 className="font-medium">إضافة سريعة في نقطة البيع</h4>
               <p className="text-text-secondary text-xs">إظهار كزر سريع في شاشة نقطة البيع</p>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
+            <label className="relative inline-flex items-center cursor-pointer" dir="ltr">
               <input 
                 type="checkbox" 
                 className="sr-only peer" 

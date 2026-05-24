@@ -10,6 +10,7 @@ import { FileText, ArrowRightLeft, Search, XCircle, X, Eye } from 'lucide-react'
 import { toast } from 'sonner';
 import { ReceiptOverlay } from '@/components/receipt/ReceiptOverlay';
 import { useEscKey } from '@/hooks/useEscKey';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 export default function SalesPage() {
   const queryClient = useQueryClient();
@@ -17,6 +18,7 @@ export default function SalesPage() {
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [refunds, setRefunds] = useState<{accountId: string, amountInput: string}[]>([]);
+  const returnTrapRef = useFocusTrap(returnDialogOpen);
   
   const [receiptOverlayOpen, setReceiptOverlayOpen] = useState(false);
   const [receiptInvoiceData, setReceiptInvoiceData] = useState<any>(null);
@@ -178,10 +180,10 @@ export default function SalesPage() {
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in"
           onClick={(e) => { if (e.target === e.currentTarget) setReturnDialogOpen(false); }}
         >
-          <div className="bg-surface rounded-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] shadow-xl">
+          <div ref={returnTrapRef} role="dialog" aria-modal="true" aria-labelledby="return-dialog-title" className="bg-surface rounded-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] shadow-xl">
             <div className="flex justify-between items-center p-4 border-b border-border">
-              <h2 className="text-xl font-bold">استرجاع فاتورة</h2>
-              <button onClick={() => setReturnDialogOpen(false)} className="p-2 hover:bg-muted rounded-full">
+              <h2 id="return-dialog-title" className="text-xl font-bold">استرجاع فاتورة</h2>
+              <button onClick={() => setReturnDialogOpen(false)} className="w-11 h-11 flex items-center justify-center hover:bg-muted rounded-full" aria-label="إغلاق">
                 <X className="w-5 h-5" />
               </button>
             </div>
