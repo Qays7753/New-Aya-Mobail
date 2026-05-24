@@ -215,7 +215,7 @@ export async function returnInvoice(invoiceId: string, refunds: { accountId: str
   const invoiceResult = await dbClient.query(`SELECT * FROM invoices WHERE id = ?`, [invoiceId]);
   if (invoiceResult.length === 0) throw new Error("Invoice not found");
   const invoice = invoiceResult[0];
-  if (invoice.status === 'returned') throw new Error("Invoice already returned");
+  if (invoice.paid_amount <= 0) throw new Error('لا يوجد مبلغ متبقٍّ للاسترجاع');
 
   // ── P2: التحقق من مبلغ الاسترجاع ──────────────────────────────
   if (refunds.some(r => r.amount < 0)) {
@@ -232,9 +232,21 @@ export async function returnInvoice(invoiceId: string, refunds: { accountId: str
   const now = new Date().toISOString();
   const today = format(new Date(), 'yyyy-MM-dd');
 
+  // تحقق من كميات البنود: الكمية المُسترجعة لا تتجاوز الكمية الأصلية
+  for (const item of items) {
+    const refundQty = item.quantity;
+    if (refundQty > item.quantity) {
+      throw new Error(`الكمية المُسترجعة تتجاوز الكمية الأصلية للمنتج: ${item.product_name}`);
+    }
+  }
+
+  const newPaidAmount = invoice.paid_amount - totalRefund;
+  const newStatus = newPaidAmount === 0 ? 'returned' : 'partially_returned';
+  const returnNote = newStatus === 'returned' ? 'تم الاسترجاع الكامل' : 'تم استرجاع جزئي';
+
   stmts.push({
-    sql: `UPDATE invoices SET status = 'returned', notes = 'تم الاسترجاع', paid_amount = paid_amount - ? WHERE id = ?`,
-    params: [totalRefund, invoiceId],
+    sql: `UPDATE invoices SET status = ?, paid_amount = paid_amount - ?, notes = COALESCE(notes, '') || ? WHERE id = ?`,
+    params: [newStatus, totalRefund, ` | ${returnNote}`, invoiceId],
   });
 
   for (const item of items) {
@@ -270,5 +282,8 @@ export async function returnInvoice(invoiceId: string, refunds: { accountId: str
   await dbClient.batchRun(stmts);
 
   // P4: تسجيل سجل التدقيق
-  await logAudit('استرجاع_فاتورة', `فاتورة رقم ${invoice.invoice_number} — المسترجع: ${totalRefund}`, 'invoice', invoiceId);
+  const auditDetail = newStatus === 'returned'
+    ? `فاتورة رقم ${invoice.invoice_number} — استرجاع كامل: ${totalRefund}`
+    : `فاتورة رقم ${invoice.invoice_number} — استرجاع جزئي: ${totalRefund} (المتبقي: ${newPaidAmount})`;
+  await logAudit('استرجاع_فاتورة', auditDetail, 'invoice', invoiceId);
 }

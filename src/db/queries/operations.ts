@@ -124,12 +124,12 @@ export async function createTopup({
     },
     {
       sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
-      params: [cost, account_id]
+      params: [amount, account_id]
     },
     {
       sql: `INSERT INTO ledger_entries (id, entry_date, account_id, account_name, type, amount, ref_type, ref_id, description, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [nanoid(), dateStr, account_id, account_name, 'credit', cost, 'topup', topupId, `شحن رصيد: ${topupNumber}`, timestamp]
+      params: [nanoid(), dateStr, account_id, account_name, 'credit', amount, 'topup', topupId, `شحن رصيد: ${topupNumber}`, timestamp]
     }
   ];
 

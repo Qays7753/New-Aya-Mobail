@@ -1,0 +1,103 @@
+You are working inside the EXISTING POS project at /home/user/New-Aya-Mobail
+(or this Replit workspace). Do NOT create a new project.
+
+GROUND RULES (apply to every step):
+- Before editing any file, READ its current contents first.
+- Before referencing any DB table/column, inspect the actual schema in
+  src/db/migrations/*.sql. Verify, never assume.
+- Do NOT change/refactor unrelated code, logic, layout, or behavior.
+- RTL: logical CSS only (ms-/me-/ps-/pe-/start-/end-).
+- Brand: copper #CF694A, beige #F9F8F5.
+- Money is integer fils (1 dinar = 100 fils). Currency label "د.أ".
+- If anything is ambiguous or a required file/symbol is missing, STOP and
+  report — do NOT guess.
+- After each section: run `npx tsc --noEmit`, fix all errors, commit.
+
+TASK: Fix two financial blockers — top-up account credit + true partial refunds.
+
+═══════════════════════════════════════════════════════════════
+SECTION A1 — Top-up: credit `amount` not `cost`  (audit: F1-01)
+═══════════════════════════════════════════════════════════════
+File: src/db/queries/operations.ts  →  createTopup function.
+
+Current buggy code (around line 125-130):
+  {
+    sql: `UPDATE accounts SET balance = balance + ? WHERE id = ?`,
+    params: [cost, account_id]
+  },
+
+The bug: the customer pays `amount` (e.g., 5 د.أ) for a top-up that cost
+the shop `cost` (e.g., 4.5 د.أ). The cash drawer receives `amount`, not
+`cost`. Crediting `cost` silently hides the profit (0.5 د.أ).
+
+Required changes in createTopup:
+1. Change the balance UPDATE to credit `amount`:
+     params: [amount, account_id]
+2. Change the corresponding ledger entry (the one that records this top-up
+   in ledger_entries) to record `amount`, not `cost`. Description should
+   remain clear (e.g., "شحن: {topup_number}").
+3. The `topups` table already stores (amount, cost, profit) — keep that
+   as-is. `cost` and `profit` remain for reference and reporting.
+4. Do NOT add a separate "cost expense" ledger entry. The cost of buying
+   top-up cards is booked separately when the shop pays the supplier.
+
+═══════════════════════════════════════════════════════════════
+SECTION A2 — Partial refunds (allow multiple, don't lock)  (audit: F1-02)
+═══════════════════════════════════════════════════════════════
+
+Step A2.1 — Migration
+- List src/db/migrations/ and use the next available number (likely 009).
+- Create src/db/migrations/009_partial_returns.sql.
+- Register it in src/db/migrations/index.ts following the existing pattern
+  exactly (import + push to migrations array with version 9).
+- The migration must REBUILD the invoices table to widen the CHECK
+  constraint on `status` to include 'partially_returned'. Follow the
+  table-rebuild pattern from 002_remove_debts.sql exactly. Preserve EVERY
+  existing column (including customer_name, customer_phone, pos_terminal,
+  notes, anything added by later migrations). Preserve every index. Set
+  PRAGMA user_version = 9; at the top of the file.
+- After rebuild, the CHECK should be:
+    CHECK(status IN ('active','returned','partially_returned','cancelled'))
+
+Step A2.2 — returnInvoice logic (src/db/queries/sales.ts)
+Current behavior: any refund flips status to 'returned' and prevents further
+refunds via `if (invoice.status === 'returned') throw`.
+
+Required new behavior:
+1. Replace the early check `if (invoice.status === 'returned') throw...`
+   with: `if (invoice.paid_amount <= 0) throw new Error('لا يوجد مبلغ
+   متبقٍّ للاسترجاع');`
+2. Validate as today: refunds.amount sum > 0 and <= invoice.paid_amount
+   (the current paid_amount represents the remaining refundable amount
+   after previous partial refunds).
+3. Per-item return-quantity cap: for each item in the refund, look up the
+   original invoice_items row and verify the returned quantity does not
+   exceed (originalQty - alreadyReturnedQty). If the schema does not track
+   "alreadyReturnedQty", at minimum verify returnedQty <= originalQty.
+4. After computing the new paid_amount (current - totalRefund), compute
+   the new status:
+     - If new paid_amount === 0  →  status = 'returned'
+     - Else                        →  status = 'partially_returned'
+5. Update the UPDATE statement accordingly:
+     `UPDATE invoices SET status = ?, paid_amount = paid_amount - ?,
+      notes = COALESCE(notes, '') || ... WHERE id = ?`
+6. Stock restoration: keep current logic.
+7. Ledger entries for the refund: keep current logic (debit per refund row).
+8. Audit log: keep the existing logAudit call; include the partial vs full
+   distinction in the detail string.
+
+═══════════════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════════════
+- `npx tsc --noEmit` → 0 errors.
+- Migration 009 applies cleanly on a database that already has migrations
+  001–008 applied. All existing invoice rows preserved with their data.
+- Top-up: selling a 5.00 د.أ card costing 4.50 د.أ increases the chosen
+  account balance by 5.00 د.أ (verify via Operations or DB).
+- Partial refund: returning 30% of a paid invoice succeeds, the invoice
+  status becomes 'partially_returned', and a SECOND refund of the
+  remaining 70% also succeeds and sets status='returned'.
+- A third refund attempt on a fully-returned invoice is rejected.
+
+Commit: `fix(financial): correct top-up credit + true partial refunds`
+Then `git push origin main`.
